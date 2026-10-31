@@ -41,12 +41,11 @@ utility, fun, media, protection, group tools, sudo.
 
 ## Library
 
-`whatsmeow` (https://github.com/tulir/whatsmeow, latest main) is shipped inside this
-zip in `./whatsmeow` and wired with a `replace` in `go.mod`. The MongoDB store that
-replaces `sqlstore` is in `./mongostore`.
+`whatsmeow` (https://github.com/tulir/whatsmeow) comes from `go.mod` like any other
+module; the MongoDB store that replaces `sqlstore` is in `./mongostore`.
 
-Before the first deploy run once (needs Go 1.26+):
+Before the first deploy run once (Go 1.26+), then commit `go.mod` and `go.sum`:
 
-    go mod tidy && go build ./...
-
-and commit the generated `go.sum`.
+    go get go.mau.fi/whatsmeow@latest
+    go mod tidy
+    go build ./...
