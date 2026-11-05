@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"log"
 	"strings"
 	"time"
@@ -8,9 +9,30 @@ import (
 	"PbxGb/client"
 	"PbxGb/config"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
+
+// ── CONVENIENCE HELPERS ────────────────────────────────────────────────────
+
+// getClientSafe returns the whatsmeow client or nil if not yet ready.
+func getClientSafe() *whatsmeow.Client {
+	wac := client.Get()
+	if wac == nil {
+		return nil
+	}
+	if !wac.IsConnected() {
+		return nil
+	}
+	return wac
+}
+
+// newContext returns a context.WithTimeout and its cancel func.
+// n is the timeout in seconds.
+func newContext(n int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), time.Duration(n)*time.Second)
+}
 
 type CommandInfo struct {
 	Pattern string
@@ -84,6 +106,28 @@ func isSudoOrOwner(v *events.Message) bool {
 // ── HANDLE MESSAGE ─────────────────────────────────────────────────────────
 
 func HandleMessage(v *events.Message) {
+	// ── side-effect hooks (run on every message, no prefix needed) ──
+	// — from original PBX Elite modules —
+	CheckFlood(v)        // antiflood.go     — kick/warn flood offenders
+	TrackMessage(v)      // groupstats.go    — track per-member group stats
+	ProcessAIMode(v)     // chatbot.go       — reply when AI mode is on
+	MarkAsRead(v)        // autoread.go      — mark read when autoread is on
+	TrackStatus(v)       // statushistory.go — record status@broadcast entries
+	TrackUserStats(v)    // mystats.go       — per-user message statistics
+
+	// — from newly added modules —
+	CheckAFK(v)          // afk.go      — auto-reply when AFK; cancel on own msg
+	CheckAntiSpam(v)     // antispam.go — kick/warn spammers
+	CheckAntiLink(v)     // antilink.go — kick/warn link posters
+	CheckAutoPilot(v)    // autopilot.go — per-chat keyword auto-reply
+	ProcessAutoReply(v)  // autoreply.go — global keyword auto-reply (.ar rules)
+	CheckMute(v)         // mute.go     — drop messages from muted users
+	CheckSlowMode(v)     // slowmode.go — rate-limit messages
+	CheckMediaFilter(v)  // mediafilter.go — block disallowed media types
+	CheckFilters(v)      // filters.go  — keyword-based auto-responses
+	CheckAntibot(v)      // antibot.go  — kick bots that join
+	TrackMentions(v)     // mentioned.go — track @mentions for the bot
+	CheckReplyRaid(v)   // replyraid.go — auto-reply raid on target users
 
 	text := extractText(v)
 	if text == "" {
@@ -103,6 +147,11 @@ func HandleMessage(v *events.Message) {
 	cmd := strings.ToLower(parts[0])
 	args := parts[1:]
 
+	// Gate: if chat is locked, only owner/sudo can run commands
+	if IsChatLocked(v.Info.Chat.String()) && !isSudoOrOwner(v) {
+		return
+	}
+
 	for _, mod := range allModules {
 		for _, command := range mod.Commands {
 			if !strings.EqualFold(command.Pattern, cmd) {
@@ -121,6 +170,37 @@ func HandleMessage(v *events.Message) {
 
 			_ = command.Handler(v, args)
 			return
+		}
+	}
+}
+
+// ── GROUP PARTICIPANT EVENTS ───────────────────────────────────────────────
+
+// HandleGroupParticipant is called from main when a group participant event fires.
+// Wire it: wac.AddEventHandler(func(evt interface{}) { if e, ok := evt.(*events.GroupInfo); ok { modules.HandleGroupParticipant(e) } })
+func HandleGroupParticipant(evt *events.GroupInfo) {
+	// welcome/goodbye hooks
+	if len(evt.Join) > 0 {
+		HandleGroupJoin(evt)  // welcome.go — send welcome message
+	}
+	if len(evt.Leave) > 0 {
+		HandleGroupLeave(evt) // welcome.go — send goodbye message
+	}
+
+	// auto-kick banned users who rejoin
+	if len(evt.Join) > 0 {
+		wac := getClientSafe()
+		if wac == nil {
+			return
+		}
+		chat := evt.JID.String()
+		for _, jid := range evt.Join {
+			if IsBanned(chat, jid.String()) {
+				ctx, cancel := newContext(10)
+				_, _ = wac.UpdateGroupParticipants(ctx, evt.JID, []types.JID{jid}, "remove")
+				cancel()
+				log.Printf("[BAN] Auto-kicked rejoining banned user %s from %s", jid.String(), chat)
+			}
 		}
 	}
 }

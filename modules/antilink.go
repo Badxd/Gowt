@@ -1,188 +1,238 @@
 package modules
 
 import (
-	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 
-	"PbxGb/client"
-
 	waProto "go.mau.fi/whatsmeow/binary/proto"
-	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
 )
+
+// Anti-link: auto-delete WhatsApp group invite links from non-admins.
+//
+// .antilink on/off/status  — toggle anti-link for this chat
+// .allowlink @user         — whitelist a user (they can send links)
+// .disallowlink @user      — remove whitelist
 
 var (
-	antilinkMu     sync.RWMutex
-	antilinkGroups = make(map[string]bool)
-	antilinkWarn   = make(map[string]int)
+	antilinkMu      sync.RWMutex
+	antilinkEnabled = make(map[string]bool)     // chatJID -> enabled
+	antilinkAllow   = make(map[string][]string) // chatJID -> []allowedUserJID (normalized)
 )
 
-// Blocked patterns — http/https, t.me, instagram, wa.me, whatsapp, youtube sab
-var linkRegex = regexp.MustCompile(
-	`(?i)(https?://` +
-		`|t\.me/` +
-		`|telegram\.me/` +
-		`|wa\.me/` +
-		`|chat\.whatsapp\.com/` +
-		`|whatsapp\.com/` +
-		`|instagram\.com/` +
-		`|instagr\.am/` +
-		`|youtu\.be/` +
-		`|youtube\.com/` +
-		`|bit\.ly/` +
-		`|tinyurl\.com/)`,
-)
+// linkPatterns are patterns that match WhatsApp invite links.
+var linkPatterns = []string{
+	"chat.whatsapp.com/",
+	"wa.me/",
+	"whatsapp.com/",
+}
 
-func HandleAntiLink(v *events.Message) {
-	if !isGroup(v) {
-		return
+func isGroupLink(text string) bool {
+	lower := strings.ToLower(text)
+	for _, pat := range linkPatterns {
+		if strings.Contains(lower, pat) {
+			return true
+		}
 	}
-	if isOwner(v) || v.Info.IsFromMe {
-		return
-	}
+	return false
+}
 
-	groupStr := v.Info.Chat.String()
+func isAllowedSender(chat, sender string) bool {
+	norm := normalizeJIDForSudo(sender)
 	antilinkMu.RLock()
-	enabled := antilinkGroups[groupStr]
+	list := antilinkAllow[chat]
+	antilinkMu.RUnlock()
+	for _, a := range list {
+		if a == norm {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckAntiLink is the exported hook — auto-deletes WhatsApp links from non-admins.
+func CheckAntiLink(v *events.Message) {
+	if !strings.Contains(v.Info.Chat.String(), "@g.us") {
+		return
+	}
+
+	chat := v.Info.Chat.String()
+	antilinkMu.RLock()
+	enabled := antilinkEnabled[chat]
 	antilinkMu.RUnlock()
 	if !enabled {
 		return
 	}
 
-	// Text + caption dono check karo
-	text := extractText(v)
-	if text == "" && v.Message != nil {
-		if img := v.Message.GetImageMessage(); img != nil {
-			text = img.GetCaption()
-		} else if vid := v.Message.GetVideoMessage(); vid != nil {
-			text = vid.GetCaption()
-		}
-	}
-	if !linkRegex.MatchString(text) {
+	wac := getClientSafe()
+	if wac == nil {
 		return
 	}
 
-	wac := client.Get()
+	// skip own messages
+	if wac.Store.ID != nil && strings.HasPrefix(v.Info.Sender.String(), wac.Store.ID.User) {
+		return
+	}
 
-	// Admins exempt ne
-	info, err := wac.GetGroupInfo(context.Background(), v.Info.Chat)
+	body := extractBodyText(v)
+	if !isGroupLink(body) {
+		return
+	}
+
+	// allow if sender is a group admin — fetch group info
+	ctx, cancel := newContext(10)
+	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	cancel()
 	if err == nil {
-		for _, p := range info.Participants {
+		for _, p := range groupInfo.Participants {
 			if p.JID.User == v.Info.Sender.User && (p.IsAdmin || p.IsSuperAdmin) {
-				return
+				return // sender is admin, skip
 			}
 		}
 	}
 
-	// Message delete karo
-	_, _ = wac.RevokeMessage(context.Background(), v.Info.Chat, v.Info.ID)
-
-	// Warn increment
-	warnKey := groupStr + "|" + v.Info.Sender.String()
-	antilinkMu.Lock()
-	antilinkWarn[warnKey]++
-	warns := antilinkWarn[warnKey]
-	antilinkMu.Unlock()
-
-	senderJID := v.Info.Sender
-	user := senderJID.User
-	mentions := []string{senderJID.String()}
-
-	if warns >= 1 {
-		// Kick + gban
-		antilinkMu.Lock()
-		if gbanned[groupStr] == nil {
-			gbanned[groupStr] = make(map[string]bool)
-		}
-		gbanned[groupStr][senderJID.String()] = true
-		delete(antilinkWarn, warnKey)
-		antilinkMu.Unlock()
-
-		_, _ = wac.UpdateGroupParticipants(
-			context.Background(),
-			v.Info.Chat,
-			[]types.JID{senderJID},
-			"remove",
-		)
-
-		msg := fmt.Sprintf(
-			"🚫 *Anti-Link*\n\n"+
-				"👤 @%s\n"+
-				"⛔ Sharing links is not allowed in this group!\n"+
-				"❌ User kicked & banned.", user)
-		sendGroupMention(v.Info.Chat, msg, mentions)
+	// allow if sender is in the allowlist
+	if isAllowedSender(chat, v.Info.Sender.String()) {
+		return
 	}
-}
 
-// sendGroupMention helper
-func sendGroupMention(chatJID types.JID, text string, mentions []string) {
-	wac := client.Get()
-	_, _ = wac.SendMessage(context.Background(), chatJID, &waProto.Message{
+	// revoke the message
+	ctx2, cancel2 := newContext(8)
+	_ = wac.RevokeMessage(ctx2, v.Info.Chat, false, v.Info.ID, "", "")
+	cancel2()
+
+	// warn the user
+	phone := v.Info.Sender.User
+	mentions := []string{v.Info.Sender.String()}
+	warn := fmt.Sprintf("🚫 @%s, group invite links are not allowed here. Your message has been removed.", phone)
+	msg := &waProto.Message{
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
-			Text: &text,
+			Text: proto.String(warn),
 			ContextInfo: &waProto.ContextInfo{
-				MentionedJID: mentions,
+				MentionedJid: mentions,
 			},
 		},
-	})
+	}
+	ctx3, cancel3 := newContext(8)
+	defer cancel3()
+	_, _ = wac.SendMessage(ctx3, v.Info.Chat, msg)
 }
 
-func antilinkToggleHandler(v *events.Message, args []string) error {
-	if !isGroup(v) {
-		return ReplyErr(v, "❌ Only works in groups.")
+func antilinkHandler(v *events.Message, args []string) error {
+	if !strings.Contains(v.Info.Chat.String(), "@g.us") {
+		return ReplyErr(v, "❌ This command can only be used in a group.")
 	}
-	groupStr := v.Info.Chat.String()
+
+	chat := v.Info.Chat.String()
 
 	if len(args) == 0 {
 		antilinkMu.RLock()
-		s := antilinkGroups[groupStr]
+		en := antilinkEnabled[chat]
 		antilinkMu.RUnlock()
-		state := "🔴 OFF"
-		if s {
-			state = "🟢 ON"
+		status := "🔴 disabled"
+		if en {
+			status = "🟢 enabled"
 		}
-		return ReplyErr(v, fmt.Sprintf("🔗 Anti-Link: *%s*", state))
+		return ReplyErr(v, fmt.Sprintf("🔗 Anti-link is currently *%s* in this chat.\nUse .antilink on/off to toggle.", status))
 	}
 
 	switch strings.ToLower(args[0]) {
-	case "on":
+	case "on", "enable":
 		antilinkMu.Lock()
-		antilinkGroups[groupStr] = true
+		antilinkEnabled[chat] = true
 		antilinkMu.Unlock()
-		return ReplyErr(v,
-			"✅ *Anti-Link ON* 🔗\n\n"+
-				"Blocked links:\n"+
-				"• http / https\n"+
-				"• t.me (Telegram)\n"+
-				"• instagram.com\n"+
-				"• wa.me / chat.whatsapp.com\n"+
-				"• youtube.com / youtu.be\n"+
-				"• bit.ly / tinyurl\n\n"+
-				"Link bhejne pe:\n"+
-				"🗑️ Message delete\n"+
-				"🚫 User kicked & banned")
-	case "off":
+		return ReplyErr(v, "✅ Anti-link *enabled*. Group invite links from non-admins will be auto-deleted.")
+	case "off", "disable":
 		antilinkMu.Lock()
-		antilinkGroups[groupStr] = false
+		antilinkEnabled[chat] = false
 		antilinkMu.Unlock()
-		return ReplyErr(v, "🔴 *Anti-Link OFF*")
+		return ReplyErr(v, "✅ Anti-link *disabled*.")
+	case "status":
+		antilinkMu.RLock()
+		en := antilinkEnabled[chat]
+		antilinkMu.RUnlock()
+		status := "🔴 disabled"
+		if en {
+			status = "🟢 enabled"
+		}
+		return ReplyErr(v, fmt.Sprintf("🔗 Anti-link: *%s*", status))
+	default:
+		return ReplyErr(v, "Usage: .antilink on/off/status")
 	}
-	return ReplyErr(v, "❌ Use: .antilink on / off")
+}
+
+func allowLinkHandler(v *events.Message, args []string) error {
+	if !strings.Contains(v.Info.Chat.String(), "@g.us") {
+		return ReplyErr(v, "❌ This command can only be used in a group.")
+	}
+
+	target, err := extractTargetJID(v, args)
+	if err != nil || target == "" {
+		return ReplyErr(v, "Usage: .allowlink @mention")
+	}
+
+	chat := v.Info.Chat.String()
+	norm := normalizeJIDForSudo(target)
+
+	antilinkMu.Lock()
+	list := antilinkAllow[chat]
+	for _, a := range list {
+		if a == norm {
+			antilinkMu.Unlock()
+			return ReplyErr(v, "ℹ️ User already in the allowlist.")
+		}
+	}
+	antilinkAllow[chat] = append(list, norm)
+	antilinkMu.Unlock()
+
+	phone := strings.Split(norm, "@")[0]
+	return ReplyErr(v, fmt.Sprintf("✅ *+%s* can now send links in this group.", phone))
+}
+
+func disallowLinkHandler(v *events.Message, args []string) error {
+	if !strings.Contains(v.Info.Chat.String(), "@g.us") {
+		return ReplyErr(v, "❌ This command can only be used in a group.")
+	}
+
+	target, err := extractTargetJID(v, args)
+	if err != nil || target == "" {
+		return ReplyErr(v, "Usage: .disallowlink @mention")
+	}
+
+	chat := v.Info.Chat.String()
+	norm := normalizeJIDForSudo(target)
+
+	antilinkMu.Lock()
+	list := antilinkAllow[chat]
+	newList := list[:0]
+	found := false
+	for _, a := range list {
+		if a == norm {
+			found = true
+			continue
+		}
+		newList = append(newList, a)
+	}
+	antilinkAllow[chat] = newList
+	antilinkMu.Unlock()
+
+	phone := strings.Split(norm, "@")[0]
+	if !found {
+		return ReplyErr(v, fmt.Sprintf("ℹ️ *+%s* was not in the allowlist.", phone))
+	}
+	return ReplyErr(v, fmt.Sprintf("✅ *+%s* removed from link allowlist.", phone))
 }
 
 func init() {
 	Register(ModuleInfo{
-		Name:        "AntiLink",
-		Description: "Delete links + ban sender in groups",
+		Name:        "Anti-Link",
+		Description: "Auto-delete WhatsApp group invite links from non-admins",
 		Commands: []CommandInfo{
-			{
-				Pattern: "antilink",
-				Handler: antilinkToggleHandler,
-				Sudo:    true,
-			},
+			{Pattern: "antilink", Handler: antilinkHandler, Sudo: true},
+			{Pattern: "allowlink", Handler: allowLinkHandler, Sudo: true},
+			{Pattern: "disallowlink", Handler: disallowLinkHandler, Sudo: true},
 		},
 	})
 }

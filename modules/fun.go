@@ -45,10 +45,6 @@ func jokeHandler(v *events.Message, args []string) error {
 	return ReplyErr(v, "😂 *Joke of the Day*\n\n"+joke)
 }
 
-func quoteHandler(v *events.Message, args []string) error {
-	quote := quotes[rand.Intn(len(quotes))]
-	return ReplyErr(v, "📖 *Quote*\n\n"+quote)
-}
 
 func factHandler(v *events.Message, args []string) error {
 	fact := facts[rand.Intn(len(facts))]
@@ -88,7 +84,6 @@ func init() {
 		Description: "Fun commands — joke, quote, fact, games",
 		Commands: []CommandInfo{
 			{Pattern: "joke",   Handler: jokeHandler,     Sudo: true},
-			{Pattern: "quote",  Handler: quoteHandler,    Sudo: true},
 			{Pattern: "fact",   Handler: factHandler,     Sudo: true},
 			{Pattern: "toss",   Handler: tossHandler,     Sudo: true},
 			{Pattern: "dice",   Handler: diceHandler,     Sudo: true},

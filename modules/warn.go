@@ -1,277 +1,209 @@
 package modules
 
 import (
-	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
-	"PbxGb/client"
-	"PbxGb/database"
-
-	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
-// MaxWarnings is how many warnings a user can get before being auto-kicked.
-const MaxWarnings = 3
+// Warning system: give users warnings, auto-kick after threshold.
+//
+// .warn @user [reason]   — give a warning (default threshold: 3 warns = kick)
+// .warns @user           — show warning count
+// .resetwarn @user       — reset warnings
+// .setwarnlimit <n>      — set warn limit for this chat (default 3)
+// .warnlist              — show all warned users in this chat
 
-// resolveMentionOrReplyTarget mirrors Knight Bot's warn.js target logic:
-// prefer an @mention in the message, otherwise fall back to who's being
-// replied to. Returns "" if neither is present.
-func resolveMentionOrReplyTarget(v *events.Message) string {
-	if v.Message != nil && v.Message.ExtendedTextMessage != nil {
-		ctx := v.Message.ExtendedTextMessage.ContextInfo
-		if ctx != nil && len(ctx.MentionedJID) > 0 {
-			return ctx.MentionedJID[0]
-		}
-		if ctx != nil && ctx.Participant != nil && ctx.QuotedMessage != nil {
-			return *ctx.Participant
-		}
-	}
-	return ""
+type warnEntry struct {
+	Count   int
+	Reasons []string
+	LastAt  time.Time
 }
 
-// argsAfterMention strips a leading mention from the args (Knight does the
-// same: ".warn @user reason" — the mention itself isn't part of the reason).
-func argsAfterMention(v *events.Message, args []string) []string {
-	if v.Message != nil && v.Message.ExtendedTextMessage != nil {
-		ctx := v.Message.ExtendedTextMessage.ContextInfo
-		if ctx != nil && len(ctx.MentionedJID) > 0 && len(args) > 0 {
-			return args[1:]
-		}
+var (
+	warnMu    sync.RWMutex
+	warnMap   = make(map[string]*warnEntry) // "chatJID|userJID" -> entry
+	warnLimit = make(map[string]int)        // chatJID -> limit (default 3)
+)
+
+func getWarnLimit(chat string) int {
+	warnMu.RLock()
+	limit, ok := warnLimit[chat]
+	warnMu.RUnlock()
+	if !ok || limit <= 0 {
+		return 3
 	}
-	return args
+	return limit
 }
 
-// isParticipantAdmin checks whether targetJID is an admin/superadmin in the group.
-func isParticipantAdmin(groupJID, targetJID types.JID) bool {
-	wac := client.Get()
-	info, err := wac.GetGroupInfo(context.Background(), groupJID)
-	if err != nil {
-		return false
-	}
-	for _, p := range info.Participants {
-		if p.JID.User == targetJID.User && (p.IsAdmin || p.IsSuperAdmin) {
-			return true
-		}
-	}
-	return false
-}
-
-// .warn @user <reason>  OR  reply + .warn <reason>
 func warnHandler(v *events.Message, args []string) error {
-	if !isGroup(v) {
-		return ReplyErr(v, "❌ Only works in groups.")
+	if !strings.Contains(v.Info.Chat.String(), "@g.us") {
+		return ReplyErr(v, "❌ This command can only be used in a group.")
 	}
 
-	target := resolveMentionOrReplyTarget(v)
-	if target == "" {
-		return ReplyErr(v, "❌ Mention or reply to the user to warn!\nExample: .warn @user Breaking rules")
+	target, err := extractTargetJID(v, args)
+	if err != nil || target == "" {
+		return ReplyErr(v, "Usage: .warn @mention [reason]")
 	}
 
-	targetJID, err := types.ParseJID(target)
-	if err != nil {
-		return ReplyErr(v, "❌ Invalid user.")
+	// reason = everything after the mention/number arg
+	reason := "No reason provided"
+	if len(args) > 1 {
+		reason = strings.Join(args[1:], " ")
 	}
 
-	if isParticipantAdmin(v.Info.Chat, targetJID) {
-		return ReplyErr(v, "❌ Cannot warn an admin!")
+	chat := v.Info.Chat.String()
+	normalized := normalizeJIDForSudo(target)
+	key := chat + "|" + normalized
+	limit := getWarnLimit(chat)
+
+	warnMu.Lock()
+	entry, ok := warnMap[key]
+	if !ok {
+		entry = &warnEntry{}
+		warnMap[key] = entry
 	}
+	entry.Count++
+	entry.Reasons = append(entry.Reasons, fmt.Sprintf("%d. %s", entry.Count, reason))
+	entry.LastAt = time.Now()
+	count := entry.Count
+	warnMu.Unlock()
 
-	reason := strings.Join(argsAfterMention(v, args), " ")
-	if reason == "" {
-		reason = "No reason specified"
-	}
+	phone := strings.Split(normalized, "@")[0]
 
-	count, err := database.AddWarning(v.Info.Chat.String(), target, reason)
-	if err != nil {
-		return ReplyErr(v, fmt.Sprintf("❌ Could not save warning: %v", err))
-	}
-
-	user := targetJID.User
-	text := fmt.Sprintf("⚠️ *USER WARNING*\n\n👤 User: @%s\n📝 Reason: %s\n⚠️ Warnings: %d/%d\n\n",
-		user, reason, count, MaxWarnings)
-
-	if count >= MaxWarnings {
-		text += "❌ User has reached maximum warnings and will be removed!"
-	} else {
-		text += "⚠️ Next warning will bring them closer to removal!"
-	}
-
-	wac := client.Get()
-	_, _ = wac.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-		ExtendedTextMessage: &waProto.ExtendedTextMessage{
-			Text: &text,
-			ContextInfo: &waProto.ContextInfo{
-				MentionedJID: []string{target},
-			},
-		},
-	})
-
-	if count >= MaxWarnings {
-		_, kickErr := wac.UpdateGroupParticipants(context.Background(), v.Info.Chat, []types.JID{targetJID}, "remove")
-		if kickErr == nil {
-			_ = database.ClearWarnings(v.Info.Chat.String(), target)
-		} else {
-			_ = ReplyErr(v, fmt.Sprintf("⚠️ Reached max warnings but couldn't remove them (am I admin?): %v", kickErr))
+	if count >= limit {
+		// auto-kick
+		wac := getClientSafe()
+		if wac != nil {
+			targetJID, parseErr := types.ParseJID(target)
+			if parseErr == nil {
+				ctx, cancel := newContext(15)
+				_, _ = wac.UpdateGroupParticipants(ctx, v.Info.Chat, []types.JID{targetJID}, "remove")
+				cancel()
+			}
 		}
+		// reset warns after kick
+		warnMu.Lock()
+		delete(warnMap, key)
+		warnMu.Unlock()
+		return ReplyErr(v, fmt.Sprintf(
+			"⚠️ *+%s* has received warning *%d/%d*.\n📛 Reason: %s\n\n🚫 *Kicked!* Maximum warnings reached.",
+			phone, count, limit, reason))
 	}
 
-	return nil
+	return ReplyErr(v, fmt.Sprintf(
+		"⚠️ *+%s* has been warned.\n📛 Reason: %s\n📊 Warnings: *%d/%d*",
+		phone, reason, count, limit))
 }
 
-// .resetwarn @user  OR  reply + .resetwarn
+func warnsHandler(v *events.Message, args []string) error {
+	target, err := extractTargetJID(v, args)
+	if err != nil || target == "" {
+		return ReplyErr(v, "Usage: .warns @mention or .warns <number>")
+	}
+
+	chat := v.Info.Chat.String()
+	normalized := normalizeJIDForSudo(target)
+	key := chat + "|" + normalized
+	limit := getWarnLimit(chat)
+
+	warnMu.RLock()
+	entry := warnMap[key]
+	warnMu.RUnlock()
+
+	phone := strings.Split(normalized, "@")[0]
+	if entry == nil || entry.Count == 0 {
+		return ReplyErr(v, fmt.Sprintf("✅ *+%s* has no warnings.", phone))
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("⚠️ *Warnings for +%s:* %d/%d", phone, entry.Count, limit), "")
+	for _, r := range entry.Reasons {
+		lines = append(lines, "  • "+r)
+	}
+	return ReplyErr(v, strings.Join(lines, "\n"))
+}
+
 func resetWarnHandler(v *events.Message, args []string) error {
-	if !isGroup(v) {
-		return ReplyErr(v, "❌ Only works in groups.")
+	target, err := extractTargetJID(v, args)
+	if err != nil || target == "" {
+		return ReplyErr(v, "Usage: .resetwarn @mention or .resetwarn <number>")
 	}
 
-	target := resolveMentionOrReplyTarget(v)
-	if target == "" {
-		return ReplyErr(v, "❌ Mention or reply to the user to reset warnings!\nExample: .resetwarn @user")
+	chat := v.Info.Chat.String()
+	normalized := normalizeJIDForSudo(target)
+	key := chat + "|" + normalized
+
+	warnMu.Lock()
+	_, existed := warnMap[key]
+	delete(warnMap, key)
+	warnMu.Unlock()
+
+	phone := strings.Split(normalized, "@")[0]
+	if !existed {
+		return ReplyErr(v, fmt.Sprintf("ℹ️ *+%s* had no warnings.", phone))
 	}
-
-	targetJID, err := types.ParseJID(target)
-	if err != nil {
-		return ReplyErr(v, "❌ Invalid user.")
-	}
-
-	current := database.GetWarningCount(v.Info.Chat.String(), target)
-	if current == 0 {
-		return ReplyErr(v, fmt.Sprintf("✅ @%s has no warnings to reset.", targetJID.User))
-	}
-
-	if err := database.ClearWarnings(v.Info.Chat.String(), target); err != nil {
-		return ReplyErr(v, fmt.Sprintf("❌ Failed: %v", err))
-	}
-
-	text := fmt.Sprintf("✅ *Warnings Reset*\n\n👤 User: @%s\n⚠️ Previous warnings: %d\n\nAll warnings cleared.",
-		targetJID.User, current)
-
-	wac := client.Get()
-	_, err = wac.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-		ExtendedTextMessage: &waProto.ExtendedTextMessage{
-			Text: &text,
-			ContextInfo: &waProto.ContextInfo{
-				MentionedJID: []string{target},
-			},
-		},
-	})
-	return err
+	return ReplyErr(v, fmt.Sprintf("✅ Warnings reset for *+%s*.", phone))
 }
 
-// .hidetag / .tag <text>  — mention everyone without printing the full list.
-// If replying to media (image/video), that media is resent with the caption
-// and hidden mentions; if replying to text, that text is resent; otherwise
-// the given args are sent as plain text.
-func hidetagHandler(v *events.Message, args []string) error {
-	if !isGroup(v) {
-		return ReplyErr(v, "❌ Only works in groups.")
+func setWarnLimitHandler(v *events.Message, args []string) error {
+	if len(args) == 0 {
+		return ReplyErr(v, "Usage: .setwarnlimit <number>\nExample: .setwarnlimit 5")
 	}
-
-	wac := client.Get()
-	info, err := wac.GetGroupInfo(context.Background(), v.Info.Chat)
-	if err != nil {
-		return ReplyErr(v, fmt.Sprintf("❌ Failed to get group info: %v", err))
+	var n int
+	if _, err := fmt.Sscan(args[0], &n); err != nil || n < 1 || n > 20 {
+		return ReplyErr(v, "❌ Invalid number. Must be between 1 and 20.")
 	}
+	chat := v.Info.Chat.String()
+	warnMu.Lock()
+	warnLimit[chat] = n
+	warnMu.Unlock()
+	return ReplyErr(v, fmt.Sprintf("✅ Warn limit set to *%d*. Users will be kicked after %d warnings.", n, n))
+}
 
-	mentions := make([]string, 0, len(info.Participants))
-	for _, p := range info.Participants {
-		mentions = append(mentions, p.JID.String())
-	}
+func warnListHandler(v *events.Message, args []string) error {
+	chat := v.Info.Chat.String()
+	prefix := chat + "|"
+	limit := getWarnLimit(chat)
 
-	text := strings.Join(args, " ")
+	warnMu.RLock()
+	defer warnMu.RUnlock()
 
-	quoted := GetQuotedMessage(v)
-	if quoted != nil {
-		// Media replies: re-send the media with mentions attached.
-		if img := quoted.GetImageMessage(); img != nil {
-			data, dlErr := wac.Download(context.Background(), img)
-			if dlErr == nil {
-				caption := text
-				if caption == "" {
-					caption = img.GetCaption()
-				}
-				uploaded, upErr := wac.Upload(context.Background(), data, whatsmeow.MediaImage)
-				if upErr == nil {
-					_, err = wac.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-						ImageMessage: &waProto.ImageMessage{
-							Caption:       &caption,
-							Mimetype:      img.Mimetype,
-							URL:           &uploaded.URL,
-							DirectPath:    &uploaded.DirectPath,
-							MediaKey:      uploaded.MediaKey,
-							FileEncSHA256: uploaded.FileEncSHA256,
-							FileSHA256:    uploaded.FileSHA256,
-							FileLength:    &uploaded.FileLength,
-							ContextInfo:   &waProto.ContextInfo{MentionedJID: mentions},
-						},
-					})
-					return err
-				}
-			}
+	var lines []string
+	lines = append(lines, fmt.Sprintf("⚠️ *Warned Users (limit: %d):*", limit), "")
+
+	count := 0
+	for key, entry := range warnMap {
+		if !strings.HasPrefix(key, prefix) || entry.Count == 0 {
+			continue
 		}
-		if vid := quoted.GetVideoMessage(); vid != nil {
-			data, dlErr := wac.Download(context.Background(), vid)
-			if dlErr == nil {
-				caption := text
-				if caption == "" {
-					caption = vid.GetCaption()
-				}
-				uploaded, upErr := wac.Upload(context.Background(), data, whatsmeow.MediaVideo)
-				if upErr == nil {
-					_, err = wac.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-						VideoMessage: &waProto.VideoMessage{
-							Caption:       &caption,
-							Mimetype:      vid.Mimetype,
-							URL:           &uploaded.URL,
-							DirectPath:    &uploaded.DirectPath,
-							MediaKey:      uploaded.MediaKey,
-							FileEncSHA256: uploaded.FileEncSHA256,
-							FileSHA256:    uploaded.FileSHA256,
-							FileLength:    &uploaded.FileLength,
-							Seconds:       vid.Seconds,
-							ContextInfo:   &waProto.ContextInfo{MentionedJID: mentions},
-						},
-					})
-					return err
-				}
-			}
-		}
-		// Text reply: resend that text with mentions.
-		if text == "" {
-			if quoted.Conversation != nil {
-				text = *quoted.Conversation
-			} else if quoted.ExtendedTextMessage != nil && quoted.ExtendedTextMessage.Text != nil {
-				text = *quoted.ExtendedTextMessage.Text
-			}
-		}
+		user := strings.TrimPrefix(key, prefix)
+		phone := strings.Split(user, "@")[0]
+		lines = append(lines, fmt.Sprintf("  • +%s — %d/%d warns", phone, entry.Count, limit))
+		count++
 	}
 
-	if text == "" {
-		text = "​" // zero-width space, matches Knight's " " fallback so the message isn't empty
+	if count == 0 {
+		return ReplyErr(v, "✅ No users have active warnings in this chat.")
 	}
-
-	_, err = wac.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-		ExtendedTextMessage: &waProto.ExtendedTextMessage{
-			Text:        &text,
-			ContextInfo: &waProto.ContextInfo{MentionedJID: mentions},
-		},
-	})
-	return err
+	return ReplyErr(v, strings.Join(lines, "\n"))
 }
 
 func init() {
 	Register(ModuleInfo{
 		Name:        "Warnings",
-		Description: "Warn system + silent hidetag",
+		Description: "Warning system with auto-kick after threshold",
 		Commands: []CommandInfo{
 			{Pattern: "warn", Handler: warnHandler, Sudo: true},
+			{Pattern: "warns", Handler: warnsHandler, Sudo: true},
 			{Pattern: "resetwarn", Handler: resetWarnHandler, Sudo: true},
-			{Pattern: "hidetag", Handler: hidetagHandler, Sudo: true},
-			{Pattern: "tag", Handler: hidetagHandler, Sudo: true},
+			{Pattern: "setwarnlimit", Handler: setWarnLimitHandler, Sudo: true},
+			{Pattern: "warnlimit", Handler: setWarnLimitHandler, Sudo: true},
+			{Pattern: "warnlist", Handler: warnListHandler, Sudo: true},
 		},
 	})
 }

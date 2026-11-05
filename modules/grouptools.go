@@ -166,7 +166,7 @@ func HandleGbanRejoin(v *events.Message) {
 }
 
 // ── TAGALL ────────────────────────────────────────────────────────────────────
-func tagAllHandler(v *events.Message, args []string) error {
+func tagAllGroupHandler(v *events.Message, args []string) error {
 	if !isGroup(v) {
 		return ReplyErr(v, "❌ This command only works in groups.")
 	}
@@ -336,9 +336,6 @@ func groupInfoHandler(v *events.Message, args []string) error {
 	return ReplyErr(v, msg)
 }
 
-// ── MUTE / UNMUTE (aliases) ───────────────────────────────────────────────────
-func muteHandler(v *events.Message, args []string) error   { return gmuteHandler(v, args) }
-func unmuteHandler(v *events.Message, args []string) error { return gunmuteHandler(v, args) }
 
 // REGISTER
 func init() {
@@ -346,7 +343,6 @@ func init() {
 		Name:        "GroupTools",
 		Description: "Group management — gmute, gban, tagall, kick, promote, demote",
 		Commands: []CommandInfo{
-			{Pattern: "tagall",    Handler: tagAllHandler,    Sudo: true},
 			{Pattern: "kick",      Handler: kickHandler,      Sudo: true},
 			{Pattern: "add",       Handler: addMemberHandler, Sudo: true},
 			{Pattern: "promote",   Handler: promoteHandler,   Sudo: true},
@@ -354,8 +350,9 @@ func init() {
 			{Pattern: "groupinfo", Handler: groupInfoHandler, Sudo: true},
 			{Pattern: "gmute",     Handler: gmuteHandler,     Sudo: true},
 			{Pattern: "gunmute",   Handler: gunmuteHandler,   Sudo: true},
-			{Pattern: "mute",      Handler: muteHandler,      Sudo: true},
-			{Pattern: "unmute",    Handler: unmuteHandler,    Sudo: true},
+			{Pattern: "gmutechat",  Handler: gmuteHandler,   Sudo: true},
+			{Pattern: "gunmutechat",Handler: gunmuteHandler, Sudo: true},
+			{Pattern: "gtag",       Handler: tagAllGroupHandler,Sudo: true},
 			{Pattern: "gban",      Handler: gbanHandler,      Sudo: true},
 			{Pattern: "ungban",    Handler: ungbanHandler,    Sudo: true},
 			{Pattern: "gbanlist",  Handler: gbanListHandler,  Sudo: true},

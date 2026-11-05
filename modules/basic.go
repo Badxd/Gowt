@@ -55,34 +55,6 @@ func pingHandler(v *events.Message, args []string) error {
 	return nil
 }
 
-// .alive
-func aliveHandler(v *events.Message, args []string) error {
-	p := config.C.Prefix
-	afk := "ᴏꜰꜰ"
-	if database.GetAFKState().Enabled {
-		afk = "ᴏɴ 😴"
-	}
-	msg := strings.Join([]string{
-		"┌───⭓ " + BotNameFancy + " ⭓───",
-		"│ ✅ *" + smallCaps("i'm alive and running") + "*",
-		"│",
-		"│ 🤖 *" + smallCaps("bot:") + "* " + BotNameFancy,
-		"│ 👤 *" + smallCaps("owner:") + "* +" + ownerNum(),
-		"│ ⚙️ *" + smallCaps("prefix:") + "* " + p,
-		"│ ⏲ *" + smallCaps("uptime:") + "* " + FormatUptime(time.Since(StartTime)),
-		fmt.Sprintf("│ 📚 *%s* %d", smallCaps("commands:"), CommandCount()),
-		"│ 🌙 *" + smallCaps("afk:") + "* " + afk,
-		"│ 📦 *" + smallCaps("version:") + "* v" + BotVersion,
-		"│",
-		"│ > _" + smallCaps("type "+p+"ping for latency, "+p+"menu for commands") + "_",
-		"│",
-		"│ 📢 *" + smallCaps("updates:") + "* " + UpdateURL,
-		"│ 💬 *" + smallCaps("support:") + "* " + ChatURL,
-		"│ 👑 *" + smallCaps("owner:") + "* " + OwnerURL,
-		boxEnd,
-	}, "\n")
-	return ReplyErr(v, msg)
-}
 
 type menuSection struct {
 	icon  string
@@ -223,10 +195,9 @@ func init() {
 		Description: "ping, alive, start, menu, help",
 		Commands: []CommandInfo{
 			{Pattern: "ping", Handler: pingHandler, Sudo: true},
-			{Pattern: "alive", Handler: aliveHandler, Sudo: true},
 			{Pattern: "start", Handler: startHandler, Sudo: true},
-			{Pattern: "help", Handler: menuHandler, Sudo: true},
-			{Pattern: "menu", Handler: menuHandler, Sudo: true},
+			{Pattern: "menu",   Handler: menuHandler, Sudo: true},
+			{Pattern: "helpme", Handler: menuHandler,  Sudo: false},
 		},
 	})
 }

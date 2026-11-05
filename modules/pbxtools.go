@@ -430,7 +430,7 @@ func romanTool(in string, _ *events.Message) (string, error) {
 	return fmt.Sprintf("🔢 %d", total), nil
 }
 
-func isPrime(n int64) bool {
+func isPrimePBX(n int64) bool {
 	if n < 2 {
 		return false
 	}
@@ -454,10 +454,10 @@ func primeTool(in string, _ *events.Message) (string, error) {
 		return "", fmt.Errorf("number must be between 0 and 10^12")
 	}
 	next := n + 1
-	for !isPrime(next) {
+	for !isPrimePBX(next) {
 		next++
 	}
-	if isPrime(n) {
+	if isPrimePBX(n) {
 		return fmt.Sprintf("✅ *%d is prime*\n➡️ Next prime: %d", n, next), nil
 	}
 	return fmt.Sprintf("❌ *%d is not prime*\n➡️ Next prime: %d", n, next), nil

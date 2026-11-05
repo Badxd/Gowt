@@ -266,31 +266,6 @@ func autoSaveToggleHandler(
 	return ReplyErr(v, "❌ Use: .autosave on / off")
 }
 
-// .save — manually save replied media
-func saveHandler(
-	v *events.Message,
-	args []string,
-) error {
-
-	quoted := GetQuotedMessage(v)
-	if quoted == nil {
-		return ReplyErr(v, "❌ Reply to a media message to save it.")
-	}
-
-	wac := client.Get()
-	selfJID := getSelfJID()
-
-	// Fake events.Message with quoted content
-	fakeEvt := &events.Message{
-		Info:    v.Info,
-		Message: quoted,
-	}
-
-	saveMediaToSelf(fakeEvt, wac, selfJID, true)
-
-	return ReplyErr(v, "✅ Media saved to *Saved Messages*!")
-}
-
 // REGISTER
 func init() {
 
@@ -303,12 +278,6 @@ func init() {
 			{
 				Pattern: "autosave",
 				Handler: autoSaveToggleHandler,
-				Sudo:    true,
-			},
-
-			{
-				Pattern: "save",
-				Handler: saveHandler,
 				Sudo:    true,
 			},
 		},
