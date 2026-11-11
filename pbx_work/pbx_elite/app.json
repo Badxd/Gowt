@@ -1,0 +1,64 @@
+{
+  "name": "PBX Elite WhatsApp Userbot",
+  "description": "PBX Elite — single-session WhatsApp userbot (Go + whatsmeow + MongoDB) with a web pairing page.",
+  "repository": "https://github.com/badmunda05/whatsapp",
+  "logo": "https://files.tgvibes.online/5JreGgKB.jpg",
+  "keywords": [
+    "whatsapp",
+    "userbot",
+    "go",
+    "whatsmeow",
+    "pbx-elite"
+  ],
+  "env": {
+    "MONGO_URI": {
+      "description": "MongoDB connection URL (used for AFK, sudo, PM security, etc.)",
+      "required": true
+    },
+    "OWNER_JID": {
+      "description": "Your WhatsApp number, digits only with country code (e.g. 919646191598). The website only pairs this number.",
+      "required": true
+    },
+    "PREFIX": {
+      "description": "Command prefix for the bot",
+      "required": false,
+      "value": "."
+    },
+    "PAIR_KEY": {
+      "description": "Optional access key for the pairing website (stops strangers from using the pair page).",
+      "required": false
+    },
+    "ALLOW_ANY_NUMBER": {
+      "description": "Set to true to allow pairing a number different from OWNER_JID.",
+      "required": false
+    },
+    "GOFLAGS": {
+      "description": "Keep as -mod=mod (lets Heroku fetch the Go modules on first build).",
+      "value": "-mod=mod",
+      "required": true
+    },
+    "MEDIA_API_URL": {
+      "description": "Base URL of your media download API (leave blank to use the default endpoint).",
+      "required": false
+    },
+    "MEDIA_API_KEY": {
+      "description": "Your media download API key.",
+      "required": false
+    },
+    "MEDIA_API_KEY2": {
+      "description": "Backup media download API key (used if MEDIA_API_KEY is not set).",
+      "required": false
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "https://github.com/heroku/heroku-buildpack-go"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
+}
