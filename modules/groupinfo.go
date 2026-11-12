@@ -26,7 +26,7 @@ func groupInfoDetailHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	info, err := wac.GetGroupInfo(v.Info.Chat)
+	info, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to get group info: %v", err))
 	}
@@ -128,7 +128,9 @@ func listGroupMembersHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Client not available.")
 	}
 
-	info, err := wac.GetGroupInfo(v.Info.Chat)
+	ctx2, cancel2 := newContext(15)
+	defer cancel2()
+	info, err := wac.GetGroupInfo(ctx2, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to get group info: %v", err))
 	}

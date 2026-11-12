@@ -21,7 +21,9 @@ func tagAllHandler(v *events.Message, args []string) error {
 	}
 	wac := client.Get()
 
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	ctx, cancel := newContext(15)
+	defer cancel()
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, "❌ Could not get group info: "+err.Error())
 	}
@@ -62,7 +64,9 @@ func tagAdminHandler(v *events.Message, args []string) error {
 	}
 	wac := client.Get()
 
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	ctx, cancel := newContext(15)
+	defer cancel()
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, "❌ Could not get group info: "+err.Error())
 	}
@@ -109,7 +113,9 @@ func listMembersHandler(v *events.Message, args []string) error {
 	}
 	wac := client.Get()
 
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	ctx, cancel := newContext(15)
+	defer cancel()
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, "❌ Could not get group info: "+err.Error())
 	}

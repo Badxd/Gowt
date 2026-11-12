@@ -72,7 +72,7 @@ func CheckAntiSpam(v *events.Message) {
 
 	// skip group admins
 	ctx, cancel := newContext(8)
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	cancel()
 	if err == nil {
 		for _, p := range groupInfo.Participants {
@@ -142,14 +142,14 @@ func CheckAntiSpam(v *events.Message) {
 		msg := &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
 				Text:        proto.String(warn),
-				ContextInfo: &waProto.ContextInfo{MentionedJid: mentions},
+				ContextInfo: &waProto.ContextInfo{MentionedJID: mentions},
 			},
 		}
 		_, _ = wac.SendMessage(ctx3, v.Info.Chat, msg)
 
 	default: // "mute" — warn and delete their message
 		ctx2, cancel2 := newContext(8)
-		_ = wac.RevokeMessage(ctx2, v.Info.Chat, false, v.Info.ID, "", "")
+		_, _ = wac.RevokeMessage(ctx2, v.Info.Chat, v.Info.ID)
 		cancel2()
 
 		ctx3, cancel3 := newContext(8)
@@ -159,7 +159,7 @@ func CheckAntiSpam(v *events.Message) {
 		msg := &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
 				Text:        proto.String(warn),
-				ContextInfo: &waProto.ContextInfo{MentionedJid: mentions},
+				ContextInfo: &waProto.ContextInfo{MentionedJID: mentions},
 			},
 		}
 		_, _ = wac.SendMessage(ctx3, v.Info.Chat, msg)

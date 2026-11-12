@@ -16,7 +16,7 @@ import (
 // getMentionedJIDs extracts @-mentioned JIDs from a message
 func getMentionedJIDs(v *events.Message) []types.JID {
 	var result []types.JID
-	var contextInfo interface{ GetMentionedJid() []string }
+	var contextInfo interface{ GetMentionedJID() []string }
 
 	if ext := v.Message.GetExtendedTextMessage(); ext != nil {
 		contextInfo = ext.GetContextInfo()
@@ -24,7 +24,7 @@ func getMentionedJIDs(v *events.Message) []types.JID {
 	if contextInfo == nil {
 		return result
 	}
-	for _, raw := range contextInfo.GetMentionedJid() {
+	for _, raw := range contextInfo.GetMentionedJID() {
 		jid, err := types.ParseJID(raw)
 		if err == nil {
 			result = append(result, jid)

@@ -68,10 +68,8 @@ func CheckMute(v *events.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	msgID := v.Info.ID.String()
-	fromMe := false // it's from them, not us
-
-	_ = wac.RevokeMessage(ctx, v.Info.Chat, fromMe, types.MessageID(msgID), "", "")
+	// it's from them, not us — but RevokeMessage only needs ctx, chat, id
+	_, _ = wac.RevokeMessage(ctx, v.Info.Chat, v.Info.ID)
 }
 
 func muteHandler(v *events.Message, args []string) error {

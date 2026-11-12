@@ -5,8 +5,10 @@ import (
 	"strings"
 	"sync"
 
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
 )
 
 // Welcome / Goodbye messages triggered on group participant join/leave events.
@@ -48,7 +50,9 @@ func HandleGroupJoin(evt *events.GroupInfo) {
 	// evt.Join is []types.JID of users who joined
 	for _, jid := range evt.Join {
 		msg := buildGreeting(tmpl, jid, evt.JID)
-		SendText(wac, evt.JID, msg)
+		ctx, cancel := newContext(10)
+		_, _ = wac.SendMessage(ctx, evt.JID, &waProto.Message{Conversation: proto.String(msg)})
+		cancel()
 	}
 }
 
@@ -73,7 +77,9 @@ func HandleGroupLeave(evt *events.GroupInfo) {
 
 	for _, jid := range evt.Leave {
 		msg := buildGreeting(tmpl, jid, evt.JID)
-		SendText(wac, evt.JID, msg)
+		ctx, cancel := newContext(10)
+		_, _ = wac.SendMessage(ctx, evt.JID, &waProto.Message{Conversation: proto.String(msg)})
+		cancel()
 	}
 }
 

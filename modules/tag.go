@@ -26,7 +26,7 @@ func tagChatAllHandler(v *events.Message, args []string) error {
 	ctx, cancel := newContext(20)
 	defer cancel()
 
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Could not fetch group info: %v", err))
 	}
@@ -50,7 +50,7 @@ func tagChatAllHandler(v *events.Message, args []string) error {
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(fullText),
 			ContextInfo: &waProto.ContextInfo{
-				MentionedJid: mentions,
+				MentionedJID: mentions,
 			},
 		},
 	}
@@ -75,7 +75,7 @@ func hideTagHandler(v *events.Message, args []string) error {
 	ctx, cancel := newContext(20)
 	defer cancel()
 
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Could not fetch group info: %v", err))
 	}
@@ -101,7 +101,7 @@ func hideTagHandler(v *events.Message, args []string) error {
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(fullText),
 			ContextInfo: &waProto.ContextInfo{
-				MentionedJid: mentions,
+				MentionedJID: mentions,
 			},
 		},
 	}
@@ -126,7 +126,7 @@ func tagAdminsHandler(v *events.Message, args []string) error {
 	ctx, cancel := newContext(20)
 	defer cancel()
 
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Could not fetch group info: %v", err))
 	}
@@ -155,7 +155,7 @@ func tagAdminsHandler(v *events.Message, args []string) error {
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(fullText),
 			ContextInfo: &waProto.ContextInfo{
-				MentionedJid: mentions,
+				MentionedJID: mentions,
 			},
 		},
 	}

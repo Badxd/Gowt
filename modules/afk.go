@@ -54,7 +54,7 @@ func CheckAFK(v *events.Message) {
 		return
 	}
 
-	for _, mentioned := range ctxInfo.GetMentionedJid() {
+	for _, mentioned := range ctxInfo.GetMentionedJID() {
 		norm := normalizeJIDForSudo(mentioned)
 		afkMu.RLock()
 		entry, isAfk := afkMap[norm]

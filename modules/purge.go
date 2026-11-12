@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -46,13 +47,12 @@ func delHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Reply to a message to delete it.")
 	}
 
-	msgID := ctxInfo.GetStanzaId()
-	fromMe := ctxInfo.GetParticipant() == "" // rough check: if participant empty, may be own msg
+	msgID := types.MessageID(ctxInfo.GetStanzaId())
 
 	ctx, cancel := newContext(10)
 	defer cancel()
 
-	err := wac.RevokeMessage(ctx, v.Info.Chat, fromMe, msgID, "", "")
+	_, err := wac.RevokeMessage(ctx, v.Info.Chat, msgID)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Could not delete message: %v", err))
 	}
@@ -61,7 +61,7 @@ func delHandler(v *events.Message, args []string) error {
 	time.Sleep(300 * time.Millisecond)
 	ctx2, cancel2 := newContext(10)
 	defer cancel2()
-	_ = wac.RevokeMessage(ctx2, v.Info.Chat, true, v.Info.ID, "", "")
+	_, _ = wac.RevokeMessage(ctx2, v.Info.Chat, v.Info.ID)
 
 	return nil
 }
@@ -104,7 +104,7 @@ func purgeHandler(v *events.Message, args []string) error {
 	deleted := 0
 	for _, msgID := range list {
 		ctx, cancel := newContext(8)
-		err := wac.RevokeMessage(ctx, v.Info.Chat, true, msgID, "", "")
+		_, err := wac.RevokeMessage(ctx, v.Info.Chat, types.MessageID(msgID))
 		cancel()
 		if err == nil {
 			deleted++
@@ -115,7 +115,7 @@ func purgeHandler(v *events.Message, args []string) error {
 	// delete the purge command itself
 	ctx, cancel := newContext(8)
 	defer cancel()
-	_ = wac.RevokeMessage(ctx, v.Info.Chat, true, v.Info.ID, "", "")
+	_, _ = wac.RevokeMessage(ctx, v.Info.Chat, v.Info.ID)
 
 	return ReplyErr(v, fmt.Sprintf("🗑️ Purged *%d* bot message(s).", deleted))
 }

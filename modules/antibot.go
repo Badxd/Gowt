@@ -1,15 +1,16 @@
 package modules
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-	"context"
+	"google.golang.org/protobuf/proto"
 )
 
 // Antibot: auto-kick users whose messages look like bot activity
@@ -95,8 +96,18 @@ func CheckAntibot(v *events.Message) {
 		return
 	}
 
-	// notify
-	_ = SendText(wac, chatJID, fmt.Sprintf("🤖 *Antibot:* Removed @%s for sending bot/spam content.", phone))
+	// notify — use SendMessage directly
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel2()
+	notifyMsg := &waProto.Message{
+		ExtendedTextMessage: &waProto.ExtendedTextMessage{
+			Text: proto.String(fmt.Sprintf("🤖 *Antibot:* Removed @%s for sending bot/spam content.", phone)),
+			ContextInfo: &waProto.ContextInfo{
+				MentionedJID: []string{senderJID.String()},
+			},
+		},
+	}
+	_, _ = wac.SendMessage(ctx2, chatJID, notifyMsg)
 }
 
 func antibotHandler(v *events.Message, args []string) error {

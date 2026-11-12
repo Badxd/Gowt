@@ -62,8 +62,7 @@ func CheckSlowMode(v *events.Message) {
 	// revoke
 	ctx, cancel := newContext(8)
 	defer cancel()
-	msgID := v.Info.ID
-	_ = wac.RevokeMessage(ctx, v.Info.Chat, false, msgID, "", "")
+	_, _ = wac.RevokeMessage(ctx, v.Info.Chat, v.Info.ID)
 }
 
 func slowModeHandler(v *events.Message, args []string) error {

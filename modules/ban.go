@@ -44,8 +44,8 @@ func extractTargetJID(v *events.Message, args []string) (string, error) {
 	}
 
 	// Check @mentions in context info
-	if ctxInfo != nil && len(ctxInfo.GetMentionedJid()) > 0 {
-		return ctxInfo.GetMentionedJid()[0], nil
+	if ctxInfo != nil && len(ctxInfo.GetMentionedJID()) > 0 {
+		return ctxInfo.GetMentionedJID()[0], nil
 	}
 
 	// Check args for phone number or @mention

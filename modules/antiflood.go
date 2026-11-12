@@ -106,7 +106,7 @@ func CheckFlood(v *events.Message) {
 			},
 		})
 	case "delete":
-		wac.RevokeMessage(context.Background(), v.Info.Chat, v.Info.ID)
+		_, _ = wac.RevokeMessage(context.Background(), v.Info.Chat, v.Info.ID)
 	}
 }
 

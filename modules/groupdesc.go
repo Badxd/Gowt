@@ -55,7 +55,7 @@ func getGroupDescHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	info, err := wac.GetGroupInfo(v.Info.Chat)
+	info, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to get group info: %v", err))
 	}

@@ -106,7 +106,9 @@ func doRaid(wac *whatsmeow.Client, v *events.Message, pool []string, count int, 
 	chatJID := v.Info.Chat
 
 	// Best-effort delete the trigger message
-	_ = wac.RevokeMessage(chatJID, v.Info.ID)
+	rctx, rcancel := newContext(8)
+	_, _ = wac.RevokeMessage(rctx, chatJID, v.Info.ID)
+	rcancel()
 
 	for i := 0; i < count; i++ {
 		msg := "@" + targetJID.User + " " + randItem(pool)

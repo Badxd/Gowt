@@ -6,6 +6,7 @@ import (
 	"time"
 
 
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -15,18 +16,12 @@ import (
 func revokeHandler(v *events.Message, args []string) error {
 	// Find the message to revoke via quoted message context
 	var targetID string
-	var targetSenderJID string
-	var fromMe bool
 
 	if ext := v.Message.GetExtendedTextMessage(); ext != nil {
 		if ci := ext.GetContextInfo(); ci != nil {
 			if ci.StanzaID != nil {
 				targetID = *ci.StanzaID
 			}
-			if ci.Participant != nil {
-				targetSenderJID = *ci.Participant
-			}
-			fromMe = ci.GetQuotedMessage() != nil && targetSenderJID == ""
 		}
 	}
 
@@ -41,12 +36,7 @@ func revokeHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Determine if the bot sent the message being revoked
-	if targetSenderJID == "" || (wac.Store.ID != nil && targetSenderJID == wac.Store.ID.String()) {
-		fromMe = true
-	}
-
-	_, err := wac.RevokeMessage(ctx, v.Info.Chat, fromMe, targetID, "", "")
+	_, err := wac.RevokeMessage(ctx, v.Info.Chat, types.MessageID(targetID))
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Revoke failed: %v\n_Note: You can only revoke messages sent by the bot._", err))
 	}

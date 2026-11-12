@@ -48,7 +48,9 @@ func getDescHandler(v *events.Message, args []string) error {
 	if wac == nil {
 		return ReplyErr(v, "❌ Client not available.")
 	}
-	info, err := wac.GetGroupInfo(v.Info.Chat)
+	ctx, cancel := newContext(10)
+	defer cancel()
+	info, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed: %v", err))
 	}
@@ -69,7 +71,9 @@ func getNameHandler(v *events.Message, args []string) error {
 	if wac == nil {
 		return ReplyErr(v, "❌ Client not available.")
 	}
-	info, err := wac.GetGroupInfo(v.Info.Chat)
+	ctx, cancel := newContext(10)
+	defer cancel()
+	info, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed: %v", err))
 	}
@@ -116,7 +120,9 @@ func groupInfoChatHandler(v *events.Message, args []string) error {
 	if wac == nil {
 		return ReplyErr(v, "❌ Client not available.")
 	}
-	info, err := wac.GetGroupInfo(v.Info.Chat)
+	ctx, cancel := newContext(10)
+	defer cancel()
+	info, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed: %v", err))
 	}

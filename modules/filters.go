@@ -66,7 +66,7 @@ func CheckFilters(v *events.Message) {
 
 	ctx, cancel := newContext(8)
 	defer cancel()
-	_ = wac.RevokeMessage(ctx, v.Info.Chat, false, v.Info.ID, "", "")
+	_, _ = wac.RevokeMessage(ctx, v.Info.Chat, v.Info.ID)
 
 	// Warn the user
 	mentions := []string{v.Info.Sender.String()}
@@ -75,7 +75,7 @@ func CheckFilters(v *events.Message) {
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(warn),
 			ContextInfo: &waProto.ContextInfo{
-				MentionedJid: mentions,
+				MentionedJID: mentions,
 			},
 		},
 	}

@@ -83,7 +83,7 @@ func CheckAntiLink(v *events.Message) {
 
 	// allow if sender is a group admin — fetch group info
 	ctx, cancel := newContext(10)
-	groupInfo, err := wac.GetGroupInfo(v.Info.Chat)
+	groupInfo, err := wac.GetGroupInfo(ctx, v.Info.Chat)
 	cancel()
 	if err == nil {
 		for _, p := range groupInfo.Participants {
@@ -98,9 +98,9 @@ func CheckAntiLink(v *events.Message) {
 		return
 	}
 
-	// revoke the message
+	// revoke the message — 3 args: ctx, chatJID, messageID
 	ctx2, cancel2 := newContext(8)
-	_ = wac.RevokeMessage(ctx2, v.Info.Chat, false, v.Info.ID, "", "")
+	_, _ = wac.RevokeMessage(ctx2, v.Info.Chat, v.Info.ID)
 	cancel2()
 
 	// warn the user
@@ -111,7 +111,7 @@ func CheckAntiLink(v *events.Message) {
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(warn),
 			ContextInfo: &waProto.ContextInfo{
-				MentionedJid: mentions,
+				MentionedJID: mentions,
 			},
 		},
 	}

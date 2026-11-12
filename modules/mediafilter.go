@@ -62,7 +62,7 @@ func CheckMediaFilter(v *events.Message) {
 
 	ctx, cancel := newContext(8)
 	defer cancel()
-	_ = wac.RevokeMessage(ctx, v.Info.Chat, false, v.Info.ID, "", "")
+	_, _ = wac.RevokeMessage(ctx, v.Info.Chat, v.Info.ID)
 }
 
 func detectMediaType(v *events.Message) string {

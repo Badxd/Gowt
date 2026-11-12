@@ -181,7 +181,7 @@ func noiseImage(src image.Image, intensity int) image.Image {
 	return dst
 }
 
-func makeImageEditHandler(label string, transform func(image.Image) image.Image) CommandHandler {
+func makeImageEditHandler(label string, transform func(image.Image) image.Image) func(*events.Message, []string) error {
 	return func(v *events.Message, args []string) error {
 		data, mime, err := downloadImageFromMsg(v)
 		if err != nil {
