@@ -7,6 +7,7 @@ import (
 	"time"
 
 
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -26,7 +27,7 @@ func getBioHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Bot JID not available.")
 	}
 
-	info, err := wac.GetUserInfo(ctx, []string{wac.Store.ID.String()})
+	info, err := wac.GetUserInfo(ctx, []types.JID{wac.Store.ID.ToNonAD()})
 	if err != nil || len(info) == 0 {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to get bio: %v", err))
 	}

@@ -106,7 +106,7 @@ func ocrHandler(v *events.Message, args []string) error {
 
 	// Direct image attachment
 	if img := v.Message.GetImageMessage(); img != nil {
-		imgBytes, err = wac.Download(img)
+		imgBytes, err = wac.Download(context.Background(), img)
 		mime = img.GetMimetype()
 		if err != nil {
 			return ReplyErr(v, "❌ Failed to download image: "+err.Error())
@@ -119,7 +119,7 @@ func ocrHandler(v *events.Message, args []string) error {
 			if ctx := ext.GetContextInfo(); ctx != nil {
 				if qm := ctx.GetQuotedMessage(); qm != nil {
 					if qimg := qm.GetImageMessage(); qimg != nil {
-						imgBytes, err = wac.Download(qimg)
+						imgBytes, err = wac.Download(context.Background(), qimg)
 						mime = qimg.GetMimetype()
 						if err != nil {
 							return ReplyErr(v, "❌ Failed to download quoted image: "+err.Error())
@@ -138,7 +138,7 @@ func ocrHandler(v *events.Message, args []string) error {
 		mime = "image/jpeg"
 	}
 
-	_ = SendText(v, "🔍 Extracting text from image...")
+	SendText(v, "🔍 Extracting text from image...")
 
 	text, err := runOCR(imgBytes, mime)
 	if err != nil {

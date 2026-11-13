@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"PbxGb/client"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -32,7 +33,7 @@ func setBioHandler(v *events.Message, args []string) error {
 	}
 	bio := strings.Join(args, " ")
 	wac := client.Get()
-	err := wac.SetStatusMessage(bio)
+	err := wac.SetStatusMessage(context.Background(), bio)
 	if err != nil {
 		return ReplyErr(v, "❌ Failed to set bio: "+err.Error())
 	}
@@ -67,7 +68,7 @@ func getPfpHandler(v *events.Message, args []string) error {
 		target = *wac.Store.ID
 	}
 
-	pic, err := wac.GetProfilePictureInfo(context.Background(), target, &types.GetProfilePictureParams{})
+	pic, err := wac.GetProfilePictureInfo(context.Background(), target, &whatsmeow.GetProfilePictureParams{})
 	if err != nil || pic == nil {
 		return ReplyErr(v, "❌ No profile picture found.")
 	}

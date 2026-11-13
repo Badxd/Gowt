@@ -44,7 +44,7 @@ func stealHandler(v *events.Message, args []string) error {
 	}
 
 	// download original sticker bytes
-	data, err := wac.Download(sticker)
+	data, err := wac.Download(v.RawMessage.Context(), sticker)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Could not download sticker: %v", err))
 	}
@@ -88,7 +88,7 @@ func toImageHandler(v *events.Message, args []string) error {
 	if wac == nil {
 		return ReplyErr(v, "❌ Client not available.")
 	}
-	data, err := wac.Download(sticker)
+	data, err := wac.Download(v.RawMessage.Context(), sticker)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Download failed: %v", err))
 	}

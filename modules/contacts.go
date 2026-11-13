@@ -66,7 +66,7 @@ func checkWAHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	result, err := wac.GetUserInfo([]types.JID{jid})
+	result, err := wac.GetUserInfo(ctx, []types.JID{jid})
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Check failed: %v", err))
 	}

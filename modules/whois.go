@@ -8,6 +8,7 @@ import (
 
 	"PbxGb/client"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -68,7 +69,7 @@ func whoisHandler(v *events.Message, args []string) error {
 	targetJID = targetJID.ToNonAD()
 
 	// Get profile picture
-	picInfo, err := wac.GetProfilePictureInfo(context.Background(), targetJID, &types.GetProfilePictureParams{})
+	picInfo, err := wac.GetProfilePictureInfo(context.Background(), targetJID, &whatsmeow.GetProfilePictureParams{})
 
 	var picText string
 	if err == nil && picInfo != nil {
@@ -78,7 +79,8 @@ func whoisHandler(v *events.Message, args []string) error {
 	}
 
 	// Get user info
-	userInfo, err := wac.GetUserInfo([]types.JID{targetJID})
+	ctx := context.Background()
+	userInfo, err := wac.GetUserInfo(ctx, []types.JID{targetJID})
 	var statusText string
 	if err == nil {
 		if info, ok := userInfo[targetJID]; ok {
@@ -110,7 +112,9 @@ func bioHandler(v *events.Message, args []string) error {
 	if len(args) == 0 {
 		// Get own bio
 		selfJID := wac.Store.ID.ToNonAD()
-		userInfo, err := wac.GetUserInfo([]types.JID{selfJID})
+		bioCtx, bioCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer bioCancel()
+		userInfo, err := wac.GetUserInfo(bioCtx, []types.JID{selfJID})
 		if err != nil {
 			return ReplyErr(v, "❌ Could not get bio: "+err.Error())
 		}

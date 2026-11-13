@@ -1,7 +1,9 @@
 package modules
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types/events"
@@ -36,7 +38,9 @@ func setppHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Quoted message is not an image.")
 	}
 
-	data, err := wac.Download(imgMsg)
+	dlCtx, dlCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	data, err := wac.Download(dlCtx, imgMsg)
+	dlCancel()
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to download image: %v", err))
 	}

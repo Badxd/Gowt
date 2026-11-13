@@ -66,7 +66,7 @@ func screenshotHandler(v *events.Message, args []string) error {
 		targetURL = "https://" + targetURL
 	}
 
-	_ = SendText(v, "📸 Taking screenshot of "+targetURL+"...")
+	SendText(v, "📸 Taking screenshot of "+targetURL+"...")
 
 	imgBytes, err := fetchScreenshot(targetURL)
 	if err != nil {

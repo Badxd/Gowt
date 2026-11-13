@@ -29,7 +29,7 @@ func downloadImageFromMsg(v *events.Message) ([]byte, string, error) {
 	wac := client.Get()
 
 	if img := v.Message.GetImageMessage(); img != nil {
-		data, err := wac.Download(img)
+		data, err := wac.Download(context.Background(), img)
 		return data, img.GetMimetype(), err
 	}
 	// Check quoted
@@ -37,7 +37,7 @@ func downloadImageFromMsg(v *events.Message) ([]byte, string, error) {
 		if ci := ext.GetContextInfo(); ci != nil {
 			if qm := ci.GetQuotedMessage(); qm != nil {
 				if qi := qm.GetImageMessage(); qi != nil {
-					data, err := wac.Download(qi)
+					data, err := wac.Download(context.Background(), qi)
 					return data, qi.GetMimetype(), err
 				}
 			}

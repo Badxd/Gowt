@@ -9,6 +9,7 @@ import (
 
 	"PbxGb/client"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -58,7 +59,9 @@ func setpfpHandler(v *events.Message, args []string) error {
 
 	// Attached image
 	if img := v.Message.GetImageMessage(); img != nil {
-		imgBytes, err = wac.Download(img)
+		dlCtx, dlCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		imgBytes, err = wac.Download(dlCtx, img)
+		dlCancel()
 		if err != nil {
 			return ReplyErr(v, "❌ Failed to download image: "+err.Error())
 		}
@@ -67,10 +70,12 @@ func setpfpHandler(v *events.Message, args []string) error {
 	// Quoted image
 	if imgBytes == nil {
 		if ext := v.Message.GetExtendedTextMessage(); ext != nil {
-			if ctx := ext.GetContextInfo(); ctx != nil {
-				if qm := ctx.GetQuotedMessage(); qm != nil {
+			if ctxInfo := ext.GetContextInfo(); ctxInfo != nil {
+				if qm := ctxInfo.GetQuotedMessage(); qm != nil {
 					if qimg := qm.GetImageMessage(); qimg != nil {
-						imgBytes, err = wac.Download(qimg)
+						dlCtx, dlCancel := context.WithTimeout(context.Background(), 30*time.Second)
+						imgBytes, err = wac.Download(dlCtx, qimg)
+						dlCancel()
 						if err != nil {
 							return ReplyErr(v, "❌ Failed to download quoted image: "+err.Error())
 						}
@@ -125,7 +130,7 @@ func cloneFullHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "Usage: .clone @user\nClones profile picture from that user.")
 	}
 
-	picInfo, err := wac.GetProfilePictureInfo(context.Background(), targetJID, &types.GetProfilePictureParams{})
+	picInfo, err := wac.GetProfilePictureInfo(context.Background(), targetJID, &whatsmeow.GetProfilePictureParams{})
 	if err != nil || picInfo == nil {
 		return ReplyErr(v, "❌ Could not fetch profile picture (private or not found).")
 	}

@@ -132,7 +132,7 @@ func vcardMentionHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	info, err := wac.GetUserInfo([]types.JID{targetJID})
+	info, err := wac.GetUserInfo(ctx, []types.JID{targetJID})
 	if err == nil {
 		if ui, ok := info[targetJID]; ok {
 			name = ui.PushName

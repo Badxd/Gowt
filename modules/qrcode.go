@@ -142,7 +142,7 @@ func qrDecodeHandler(v *events.Message, args []string) error {
 
 	// direct image attachment
 	if img := v.Message.GetImageMessage(); img != nil {
-		imgBytes, err := wac.Download(img)
+		imgBytes, err := wac.Download(context.Background(), img)
 		if err != nil {
 			return ReplyErr(v, "❌ Download failed: "+err.Error())
 		}
@@ -158,7 +158,7 @@ func qrDecodeHandler(v *events.Message, args []string) error {
 		if ci := ext.GetContextInfo(); ci != nil {
 			if qm := ci.GetQuotedMessage(); qm != nil {
 				if qimg := qm.GetImageMessage(); qimg != nil {
-					imgBytes, err := wac.Download(qimg)
+					imgBytes, err := wac.Download(context.Background(), qimg)
 					if err == nil {
 						text, err2 := decodeQRBytes(imgBytes)
 						if err2 == nil {

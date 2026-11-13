@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -101,8 +102,7 @@ func bcGroupsHandler(v *events.Message, args []string) error {
 	ctx, cancel := newContext(20)
 	defer cancel()
 
-	joined, err := wac.GetJoinedGroups()
-	_ = ctx
+	joined, err := wac.GetJoinedGroups(ctx)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Could not fetch groups: %v", err))
 	}
@@ -179,9 +179,11 @@ func forwardBroadcastHandler(v *events.Message, args []string) error {
 
 // fetchAllGroups returns all group JIDs the bot is currently in.
 func fetchAllGroups(wac interface {
-	GetJoinedGroups() ([]*types.GroupInfo, error)
+	GetJoinedGroups(context.Context) ([]*types.GroupInfo, error)
 }) ([]types.JID, error) {
-	groups, err := wac.GetJoinedGroups()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	groups, err := wac.GetJoinedGroups(ctx)
 	if err != nil {
 		return nil, err
 	}

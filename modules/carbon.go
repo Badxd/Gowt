@@ -115,7 +115,7 @@ func carbonHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ No code provided.")
 	}
 
-	_ = SendText(v, "🖼️ Generating carbon image...")
+	SendText(v, "🖼️ Generating carbon image...")
 
 	imgBytes, err := fetchCarbonImage(code, lang)
 	if err != nil {

@@ -33,7 +33,7 @@ func setDescHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := wac.SetGroupDescription(ctx, v.Info.Chat, "", desc); err != nil {
+	if err := wac.SetGroupDescription(ctx, v.Info.Chat, desc); err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed: %v", err))
 	}
 	return ReplyErr(v, "✅ Group description updated.")

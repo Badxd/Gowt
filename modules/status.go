@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -53,12 +54,12 @@ func getStatusHandler(v *events.Message, args []string) error {
 	defer cancel()
 
 	// GetUserInfo fetches profile info including status
-	info, err := wac.GetUserInfo(ctx, []string{wac.Store.ID.ToNonAD().String()})
+	botJID := wac.Store.ID.ToNonAD()
+	info, err := wac.GetUserInfo(ctx, []types.JID{botJID})
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to get status: %v", err))
 	}
 
-	botJID := wac.Store.ID.ToNonAD().String()
 	if ui, ok := info[botJID]; ok {
 		if ui.Status == "" {
 			return ReplyErr(v, "ℹ️ No status set.")

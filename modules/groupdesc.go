@@ -31,7 +31,7 @@ func setGroupDescHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	err := wac.SetGroupDescription(ctx, v.Info.Chat, "", desc)
+	err := wac.SetGroupDescription(ctx, v.Info.Chat, desc)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to set description: %v", err))
 	}

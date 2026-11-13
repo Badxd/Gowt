@@ -75,7 +75,7 @@ func lyricsHandler(v *events.Message, args []string) error {
 		}
 	}
 
-	_ = SendText(v, "🎵 Searching lyrics for: "+full)
+	SendText(v, "🎵 Searching lyrics for: "+full)
 
 	lyrics, err := fetchLyrics(artist, title)
 	if err != nil {

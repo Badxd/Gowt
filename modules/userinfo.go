@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -39,7 +39,7 @@ func userInfoHandler(v *events.Message, args []string) error {
 	defer cancel()
 
 	// fetch user info
-	infos, err := wac.GetUserInfo(ctx, []string{targetJID.String()})
+	infos, err := wac.GetUserInfo(ctx, []types.JID{targetJID})
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to get user info: %v", err))
 	}
@@ -64,7 +64,7 @@ func userInfoHandler(v *events.Message, args []string) error {
 	}
 
 	// profile picture
-	pic, err := wac.GetProfilePictureInfo(ctx, targetJID, &types.GetProfilePictureParams{Preview: false})
+	pic, err := wac.GetProfilePictureInfo(ctx, targetJID, &whatsmeow.GetProfilePictureParams{Preview: false})
 	if err == nil && pic != nil {
 		lines = append(lines, fmt.Sprintf("🖼️ [Profile Pic](%s)", pic.URL))
 	} else {
