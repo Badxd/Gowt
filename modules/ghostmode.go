@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -25,23 +25,23 @@ func applyGhostMode(wac *whatsmeow.Client, enable bool) error {
 	defer cancel()
 
 	// Privacy: read receipts — "none" hides them from everyone
-	privacy := whatsmeow.PrivacySettingEveryone
+	privacy := types.PrivacySettingAll
 	if enable {
-		privacy = whatsmeow.PrivacySettingNone
+		privacy = types.PrivacySettingNone
 	}
 
-	// SetPrivacySetting can take multiple settings
-	err := wac.SetPrivacySetting(ctx, whatsmeow.PrivacySettingTypeReadReceipts, privacy)
+	// SetPrivacySetting returns (types.PrivacySetting, error)
+	_, err := wac.SetPrivacySetting(ctx, types.PrivacySettingTypeReadReceipts, privacy)
 	if err != nil {
 		return fmt.Errorf("read receipts: %w", err)
 	}
 
-	// Also set online visibility
-	onlinePrivacy := whatsmeow.PrivacySettingEveryone
+	// Also set online visibility (valid: All or MatchLastSeen)
+	onlinePrivacy := types.PrivacySettingAll
 	if enable {
-		onlinePrivacy = whatsmeow.PrivacySettingNone
+		onlinePrivacy = types.PrivacySettingMatchLastSeen
 	}
-	err = wac.SetPrivacySetting(ctx, whatsmeow.PrivacySettingTypeOnline, onlinePrivacy)
+	_, err = wac.SetPrivacySetting(ctx, types.PrivacySettingTypeOnline, onlinePrivacy)
 	if err != nil {
 		// non-fatal — not all versions support this
 		_ = err

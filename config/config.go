@@ -15,6 +15,12 @@ type Config struct {
 	OwnerJID string
 	Prefix   string
 	Session  string
+
+	// Media download API
+	// Set via env: MEDIA_API_URL, MEDIA_API_KEY, MEDIA_API_KEY2
+	MediaAPIURL  string
+	MediaAPIKey  string
+	MediaAPIKey2 string
 }
 
 var C *Config
@@ -44,6 +50,11 @@ func Load() {
 		OwnerJID: ownerClean,
 		Prefix:   prefix,
 		Session:  os.Getenv("SESSION"),
+
+		// Media download API (optional — defaults built into mediadownload.go)
+		MediaAPIURL:  os.Getenv("MEDIA_API_URL"),
+		MediaAPIKey:  os.Getenv("MEDIA_API_KEY"),
+		MediaAPIKey2: os.Getenv("MEDIA_API_KEY2"),
 	}
 }
 

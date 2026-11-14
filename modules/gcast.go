@@ -19,7 +19,7 @@ func gcastHandler(v *events.Message, args []string) error {
 	msg := strings.Join(args, " ")
 	wac := client.Get()
 
-	chats, err := wac.Store.Contacts.GetAllContacts()
+	chats, err := wac.Store.Contacts.GetAllContacts(context.Background())
 	if err != nil {
 		return ReplyErr(v, "❌ Failed to fetch contacts: "+err.Error())
 	}
@@ -52,7 +52,7 @@ func gcastUsersHandler(v *events.Message, args []string) error {
 	msg := strings.Join(args, " ")
 	wac := client.Get()
 
-	chats, err := wac.Store.Contacts.GetAllContacts()
+	chats, err := wac.Store.Contacts.GetAllContacts(context.Background())
 	if err != nil {
 		return ReplyErr(v, "❌ Failed to fetch contacts: "+err.Error())
 	}

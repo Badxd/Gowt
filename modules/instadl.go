@@ -1,13 +1,13 @@
 package modules
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
-
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -78,7 +78,7 @@ func sendSocialMedia(v *events.Message, data []byte, ext string, caption string)
 
 	switch ext {
 	case "mp4", "mov", "webm":
-		uploaded, err := wac.Upload(v.RawMessage.Context(), data, whatsmeow.MediaVideo)
+		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaVideo)
 		if err != nil {
 			return err
 		}
@@ -94,11 +94,11 @@ func sendSocialMedia(v *events.Message, data []byte, ext string, caption string)
 				Caption:       strPtr(caption),
 			},
 		}
-		_, err = wac.SendMessage(v.RawMessage.Context(), v.Info.Chat, msg)
+		_, err = wac.SendMessage(context.Background(), v.Info.Chat, msg)
 		return err
 
 	case "mp3", "m4a", "ogg", "aac":
-		uploaded, err := wac.Upload(v.RawMessage.Context(), data, whatsmeow.MediaAudio)
+		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaAudio)
 		if err != nil {
 			return err
 		}
@@ -113,12 +113,12 @@ func sendSocialMedia(v *events.Message, data []byte, ext string, caption string)
 				Mimetype:      strPtr("audio/mpeg"),
 			},
 		}
-		_, err = wac.SendMessage(v.RawMessage.Context(), v.Info.Chat, msg)
+		_, err = wac.SendMessage(context.Background(), v.Info.Chat, msg)
 		return err
 
 	default:
 		// send as document
-		uploaded, err := wac.Upload(v.RawMessage.Context(), data, whatsmeow.MediaDocument)
+		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaDocument)
 		if err != nil {
 			return err
 		}
@@ -137,7 +137,7 @@ func sendSocialMedia(v *events.Message, data []byte, ext string, caption string)
 				Caption:       strPtr(caption),
 			},
 		}
-		_, err = wac.SendMessage(v.RawMessage.Context(), v.Info.Chat, msg)
+		_, err = wac.SendMessage(context.Background(), v.Info.Chat, msg)
 		return err
 	}
 }

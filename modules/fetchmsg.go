@@ -77,12 +77,12 @@ func msgInfoHandler(v *events.Message, args []string) error {
 	ext := v.Message.GetExtendedTextMessage()
 	if ext == nil {
 		// show info of the current message
-		return showMsgInfo(v, v.Info.ID.String(), v.Info.Sender.String(), v.Info.Timestamp)
+		return showMsgInfo(v, string(v.Info.ID), v.Info.Sender.String(), v.Info.Timestamp)
 	}
 
 	ci := ext.GetContextInfo()
 	if ci == nil || ci.StanzaID == nil {
-		return showMsgInfo(v, v.Info.ID.String(), v.Info.Sender.String(), v.Info.Timestamp)
+		return showMsgInfo(v, string(v.Info.ID), v.Info.Sender.String(), v.Info.Timestamp)
 	}
 
 	sender := ""

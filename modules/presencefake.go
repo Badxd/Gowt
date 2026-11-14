@@ -7,7 +7,6 @@ import (
 	"time"
 
 
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -126,19 +125,19 @@ func fakeLastSeenHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var ps whatsmeow.PrivacySettingValue
+	var ps types.PrivacySetting
 	switch strings.ToLower(args[0]) {
 	case "everyone", "all":
-		ps = whatsmeow.PrivacySettingEveryone
+		ps = types.PrivacySettingAll
 	case "contacts":
-		ps = whatsmeow.PrivacySettingContacts
+		ps = types.PrivacySettingContacts
 	case "nobody", "none":
-		ps = whatsmeow.PrivacySettingNone
+		ps = types.PrivacySettingNone
 	default:
 		return ReplyErr(v, "Usage: .lastseen everyone/contacts/nobody")
 	}
 
-	err := wac.SetPrivacySetting(ctx, whatsmeow.PrivacySettingTypeLastSeen, ps)
+	_, err := wac.SetPrivacySetting(ctx, types.PrivacySettingTypeLastSeen, ps)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed: %v", err))
 	}

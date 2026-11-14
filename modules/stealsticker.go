@@ -1,8 +1,8 @@
 package modules
 
 import (
+	"context"
 	"fmt"
-
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -44,12 +44,12 @@ func stealHandler(v *events.Message, args []string) error {
 	}
 
 	// download original sticker bytes
-	data, err := wac.Download(v.RawMessage.Context(), sticker)
+	data, err := wac.Download(context.Background(), sticker)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Could not download sticker: %v", err))
 	}
 
-	uploaded, err := wac.Upload(v.RawMessage.Context(), data, whatsmeow.MediaImage)
+	uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaImage)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Upload failed: %v", err))
 	}
@@ -74,7 +74,7 @@ func stealHandler(v *events.Message, args []string) error {
 	_ = author
 	// Pack name/author metadata is embedded in the WebP EXIF — for now we just re-send cleanly
 	msg := &waE2E.Message{StickerMessage: newSticker}
-	_, err = wac.SendMessage(v.RawMessage.Context(), v.Info.Chat, msg)
+	_, err = wac.SendMessage(context.Background(), v.Info.Chat, msg)
 	return err
 }
 
@@ -88,12 +88,12 @@ func toImageHandler(v *events.Message, args []string) error {
 	if wac == nil {
 		return ReplyErr(v, "❌ Client not available.")
 	}
-	data, err := wac.Download(v.RawMessage.Context(), sticker)
+	data, err := wac.Download(context.Background(), sticker)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Download failed: %v", err))
 	}
 
-	uploaded, err := wac.Upload(v.RawMessage.Context(), data, whatsmeow.MediaImage)
+	uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaImage)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Upload failed: %v", err))
 	}
@@ -111,7 +111,7 @@ func toImageHandler(v *events.Message, args []string) error {
 			Caption:       strPtr("🖼️ Sticker → Image"),
 		},
 	}
-	_, err = wac.SendMessage(v.RawMessage.Context(), v.Info.Chat, msg)
+	_, err = wac.SendMessage(context.Background(), v.Info.Chat, msg)
 	return err
 }
 

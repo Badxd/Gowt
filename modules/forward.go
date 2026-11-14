@@ -1,9 +1,9 @@
 package modules
 
 import (
+	"context"
 	"fmt"
 	"strings"
-
 
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -59,7 +59,7 @@ func fwdHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Could not extract quoted message.")
 	}
 
-	_, err = wac.SendMessage(v.RawMessage.Context(), targetJID, quoted)
+	_, err = wac.SendMessage(context.Background(), targetJID, quoted)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Forward failed: %v", err))
 	}
