@@ -18,6 +18,35 @@ func isGroup(v *events.Message) bool {
 	return v.Info.Chat.Server == types.GroupServer
 }
 
+// resolveTarget returns the target user JID string from a quoted message or args[0] phone number.
+// Returns "" if no target can be found.
+func resolveTarget(v *events.Message, args []string) string {
+	// quoted message sender
+	ctxInfo := v.Message.GetExtendedTextMessage().GetContextInfo()
+	if ctxInfo != nil && ctxInfo.GetParticipant() != "" {
+		return ctxInfo.GetParticipant()
+	}
+	// @mention in context
+	if ctxInfo != nil && len(ctxInfo.GetMentionedJID()) > 0 {
+		return ctxInfo.GetMentionedJID()[0]
+	}
+	// args[0] as phone number
+	if len(args) > 0 {
+		arg := strings.TrimPrefix(args[0], "@")
+		arg = strings.TrimPrefix(arg, "+")
+		digits := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, arg)
+		if len(digits) >= 7 {
+			return digits + "@s.whatsapp.net"
+		}
+	}
+	return ""
+}
+
 // ── GMUTE / GUNMUTE (group mute) ─────────────────────────────────────────────
 // .gmute — sirf admins bolne de sakte ne
 func gmuteHandler(v *events.Message, args []string) error {

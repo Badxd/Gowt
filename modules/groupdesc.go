@@ -60,7 +60,7 @@ func getGroupDescHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to get group info: %v", err))
 	}
 
-	desc := info.Desc
+	desc := info.Topic
 	if desc == "" {
 		return ReplyErr(v, "ℹ️ This group has no description set.")
 	}

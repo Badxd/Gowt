@@ -42,7 +42,7 @@ func init() {
 		Name:        "MediaDownload",
 		Description: "Download songs, videos, FB, TikTok, Instagram via API + yt-dlp fallback",
 		Commands: []CommandInfo{
-			{Pattern: "song",    Handler: songHandler,  Sudo: true},
+			{Pattern: "song",    Handler: songHandlerMDL,  Sudo: true},
 			{Pattern: "video",   Handler: videoHandler, Sudo: true},
 			{Pattern: "fbdl",    Handler: fbdlHandler2, Sudo: true},
 			{Pattern: "fbvideo", Handler: fbdlHandler2, Sudo: true},
@@ -170,7 +170,7 @@ func apiGet(path string, params map[string]string) (mediaResult, error) {
 }
 
 // downloadBytes fetches raw bytes from a URL
-func downloadBytes(dlURL string) ([]byte, error) {
+func downloadBytesMedia(dlURL string) ([]byte, error) {
 	hc := &http.Client{Timeout: 3 * time.Minute}
 	resp, err := hc.Get(dlURL)
 	if err != nil {
@@ -327,7 +327,7 @@ func sendImage(v *events.Message, data []byte, caption string) error {
 // ── .song ────────────────────────────────────────────────────────────────────
 // Usage: .song <YouTube URL or search query>
 
-func songHandler(v *events.Message, args []string) error {
+func songHandlerMDL(v *events.Message, args []string) error {
 	if len(args) == 0 {
 		return ReplyErr(v, "Usage: .song <YouTube URL or song name>\nExample: .song https://youtu.be/xxx\nExample: .song Diljit Dosanjh Born to Shine")
 	}
@@ -337,7 +337,7 @@ func songHandler(v *events.Message, args []string) error {
 
 	res, apiErr := apiGet("/api/download/ytaudio", map[string]string{"url": query})
 	if apiErr == nil && res.bestURL() != "" {
-		data, err := downloadBytes(res.bestURL())
+		data, err := downloadBytesMedia(res.bestURL())
 		if err == nil && len(data) > 0 {
 			title := res.Title
 			if title == "" {
@@ -376,7 +376,7 @@ func videoHandler(v *events.Message, args []string) error {
 
 	res, apiErr := apiGet("/api/download/ytvideo", map[string]string{"url": query})
 	if apiErr == nil && res.bestURL() != "" {
-		data, err := downloadBytes(res.bestURL())
+		data, err := downloadBytesMedia(res.bestURL())
 		if err == nil && len(data) > 0 {
 			title := res.Title
 			if title == "" {
@@ -411,7 +411,7 @@ func fbdlHandler2(v *events.Message, args []string) error {
 
 	res, apiErr := apiGet("/api/download/facebook", map[string]string{"url": fbURL})
 	if apiErr == nil && res.bestURL() != "" {
-		data, err := downloadBytes(res.bestURL())
+		data, err := downloadBytesMedia(res.bestURL())
 		if err == nil && len(data) > 0 {
 			title := res.Title
 			if title == "" {
@@ -446,7 +446,7 @@ func ttdlHandler(v *events.Message, args []string) error {
 
 	res, apiErr := apiGet("/api/download/tiktok", map[string]string{"url": ttURL})
 	if apiErr == nil && res.bestURL() != "" {
-		data, err := downloadBytes(res.bestURL())
+		data, err := downloadBytesMedia(res.bestURL())
 		if err == nil && len(data) > 0 {
 			title := res.Title
 			if title == "" {
@@ -482,7 +482,7 @@ func igdl2Handler(v *events.Message, args []string) error {
 
 	res, apiErr := apiGet("/api/download/instagram", map[string]string{"url": igURL})
 	if apiErr == nil && res.bestURL() != "" {
-		data, err := downloadBytes(res.bestURL())
+		data, err := downloadBytesMedia(res.bestURL())
 		if err == nil && len(data) > 0 {
 			dlURL := res.bestURL()
 			isVideo := strings.Contains(dlURL, ".mp4") ||
