@@ -36,18 +36,6 @@
       "description": "Keep as -mod=mod (lets Heroku fetch the Go modules on first build).",
       "value": "-mod=mod",
       "required": true
-    },
-    "MEDIA_API_URL": {
-      "description": "Base URL of your media download API (leave blank to use the default endpoint).",
-      "required": false
-    },
-    "MEDIA_API_KEY": {
-      "description": "Your media download API key.",
-      "required": false
-    },
-    "MEDIA_API_KEY2": {
-      "description": "Backup media download API key (used if MEDIA_API_KEY is not set).",
-      "required": false
     }
   },
   "buildpacks": [

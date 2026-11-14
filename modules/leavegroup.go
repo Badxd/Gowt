@@ -7,7 +7,6 @@ import (
 	"time"
 
 
-	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -51,16 +50,16 @@ func leaveAllGroupsHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	chats, err := wac.Store.Chats.GetAllChats()
+	groups, err := wac.GetJoinedGroups(ctx)
 	if err != nil {
-		return ReplyErr(v, fmt.Sprintf("❌ Failed to get chats: %v", err))
+		return ReplyErr(v, fmt.Sprintf("❌ Failed to get groups: %v", err))
 	}
 
 	left := 0
 	failed := 0
-	for _, chat := range chats {
-		jid, err := types.ParseJID(chat.ID)
-		if err != nil || !strings.Contains(jid.String(), "@g.us") {
+	for _, info := range groups {
+		jid := info.JID
+		if !strings.Contains(jid.String(), "@g.us") {
 			continue
 		}
 		if jid == v.Info.Chat {

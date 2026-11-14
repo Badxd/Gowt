@@ -177,6 +177,7 @@ func mediaFilterHandler(v *events.Message, args []string) error {
 	}
 
 	_ = time.Now() // keep import
+	return nil
 }
 
 func init() {

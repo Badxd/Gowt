@@ -34,13 +34,14 @@ func setNickHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Nickname cannot be empty.")
 	}
 
-	key := v.Info.Chat.String() + "|" + targetJID.String()
+	key := v.Info.Chat.String() + "|" + targetJID
 
 	nickMu.Lock()
 	nickMap[key] = nick
 	nickMu.Unlock()
 
-	return ReplyErr(v, fmt.Sprintf("✅ Nickname for @%s set to *%s*.", targetJID.User, nick))
+	user := strings.SplitN(targetJID, "@", 2)[0]
+	return ReplyErr(v, fmt.Sprintf("✅ Nickname for @%s set to *%s*.", user, nick))
 }
 
 func getNickHandler(v *events.Message, args []string) error {
@@ -49,17 +50,18 @@ func getNickHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "Usage: .nick @user (or reply to their message)")
 	}
 
-	key := v.Info.Chat.String() + "|" + targetJID.String()
+	key := v.Info.Chat.String() + "|" + targetJID
 
 	nickMu.RLock()
 	nick, ok := nickMap[key]
 	nickMu.RUnlock()
 
+	user := strings.SplitN(targetJID, "@", 2)[0]
 	if !ok || nick == "" {
-		return ReplyErr(v, fmt.Sprintf("ℹ️ No nickname set for @%s.", targetJID.User))
+		return ReplyErr(v, fmt.Sprintf("ℹ️ No nickname set for @%s.", user))
 	}
 
-	return ReplyErr(v, fmt.Sprintf("🏷️ @%s → *%s*", targetJID.User, nick))
+	return ReplyErr(v, fmt.Sprintf("🏷️ @%s → *%s*", user, nick))
 }
 
 func delNickHandler(v *events.Message, args []string) error {
@@ -68,18 +70,19 @@ func delNickHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "Usage: .delnick @user (or reply to their message)")
 	}
 
-	key := v.Info.Chat.String() + "|" + targetJID.String()
+	key := v.Info.Chat.String() + "|" + targetJID
 
 	nickMu.Lock()
 	_, had := nickMap[key]
 	delete(nickMap, key)
 	nickMu.Unlock()
 
+	user := strings.SplitN(targetJID, "@", 2)[0]
 	if !had {
-		return ReplyErr(v, fmt.Sprintf("ℹ️ No nickname was set for @%s.", targetJID.User))
+		return ReplyErr(v, fmt.Sprintf("ℹ️ No nickname was set for @%s.", user))
 	}
 
-	return ReplyErr(v, fmt.Sprintf("🗑️ Removed nickname for @%s.", targetJID.User))
+	return ReplyErr(v, fmt.Sprintf("🗑️ Removed nickname for @%s.", user))
 }
 
 func nickListHandler(v *events.Message, args []string) error {

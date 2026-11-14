@@ -64,13 +64,13 @@ func sendLocationPin(v *events.Message, lat, lon float64, name, address string) 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	latF32 := float32(lat)
-	lonF32 := float32(lon)
+	latF64 := lat
+	lonF64 := lon
 
 	msg := &waE2E.Message{
 		LocationMessage: &waE2E.LocationMessage{
-			DegreesLatitude:  &latF32,
-			DegreesLongitude: &lonF32,
+			DegreesLatitude:  &latF64,
+			DegreesLongitude: &lonF64,
 			Name:             &name,
 			Address:          &address,
 		},
@@ -152,20 +152,20 @@ func fakeLiveLocationHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	latF32 := float32(lat)
-	lonF32 := float32(lon)
-	accuracy := float32(10.0) // metres
+	latF64 := lat
+	lonF64 := lon
+	accuracy := uint32(10) // metres
 	speed := float32(0.0)
-	bearing := float32(0.0)
+	bearing := uint32(0)
 
 	msg := &waE2E.Message{
 		LiveLocationMessage: &waE2E.LiveLocationMessage{
-			DegreesLatitude:        &latF32,
-			DegreesLongitude:       &lonF32,
-			AccuracyInMeters:       &accuracy,
-			SpeedInMps:             &speed,
+			DegreesLatitude:                   &latF64,
+			DegreesLongitude:                  &lonF64,
+			AccuracyInMeters:                  &accuracy,
+			SpeedInMps:                        &speed,
 			DegreesClockwiseFromMagneticNorth: &bearing,
-			Caption:                &label,
+			Caption:                           &label,
 		},
 	}
 

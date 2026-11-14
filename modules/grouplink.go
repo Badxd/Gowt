@@ -45,10 +45,15 @@ func revokeInviteHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// reset=true revokes old link and returns new one in a single API call
-	newLink, err := wac.GetGroupInviteLink(ctx, v.Info.Chat, true)
-	if err != nil {
+	// revoke old link
+	if err := wac.RevokeGroupInviteLink(ctx, v.Info.Chat); err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to revoke invite link: %v", err))
+	}
+
+	// fetch new link
+	newLink, err := wac.GetGroupInviteLink(ctx, v.Info.Chat, false)
+	if err != nil {
+		return ReplyErr(v, "✅ Old link revoked. Could not fetch new link — try .glink")
 	}
 
 	return ReplyErr(v, fmt.Sprintf("♻️ *Invite link revoked & regenerated*\nhttps://chat.whatsapp.com/%s", newLink))

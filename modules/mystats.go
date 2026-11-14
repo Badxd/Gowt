@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -85,7 +85,7 @@ func myPersonalStatsHandler(v *events.Message, args []string) error {
 		if ci := ext.GetContextInfo(); ci != nil {
 			mentions := ci.GetMentionedJID()
 			if len(mentions) > 0 {
-				j, err := parseJID(mentions[0])
+				j, err := types.ParseJID(mentions[0])
 				if err == nil {
 					targetJID = &j
 					targetName = mentions[0]
