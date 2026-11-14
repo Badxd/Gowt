@@ -44,8 +44,8 @@ func groupInfoDetailHandler(v *events.Message, args []string) error {
 		fmt.Sprintf("📌 Name: *%s*", info.GroupName.Name),
 	}
 
-	if info.Topic.Topic != "" {
-		desc := info.Topic.Topic
+	if info.Topic != "" {
+		desc := info.Topic
 		if len(desc) > 100 {
 			desc = desc[:100] + "…"
 		}

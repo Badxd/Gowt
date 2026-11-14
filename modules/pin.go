@@ -20,7 +20,7 @@ func pinHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Reply to a message to pin it.")
 	}
 
-	msgID := quoted.GetStanzaId()
+	msgID := quoted.GetStanzaID()
 	if msgID == "" {
 		return ReplyErr(v, "❌ Could not get message ID from quoted context.")
 	}
@@ -72,7 +72,7 @@ func unpinHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Reply to the pinned message to unpin it.")
 	}
 
-	msgID := quoted.GetStanzaId()
+	msgID := quoted.GetStanzaID()
 	if msgID == "" {
 		return ReplyErr(v, "❌ Could not get message ID from quoted context.")
 	}
