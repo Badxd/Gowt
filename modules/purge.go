@@ -43,11 +43,11 @@ func delHandler(v *events.Message, args []string) error {
 
 	// Try to get quoted message ID
 	ctxInfo := v.Message.GetExtendedTextMessage().GetContextInfo()
-	if ctxInfo == nil || ctxInfo.GetStanzaId() == "" {
+	if ctxInfo == nil || ctxInfo.GetStanzaID() == "" {
 		return ReplyErr(v, "❌ Reply to a message to delete it.")
 	}
 
-	msgID := types.MessageID(ctxInfo.GetStanzaId())
+	msgID := types.MessageID(ctxInfo.GetStanzaID())
 
 	ctx, cancel := newContext(10)
 	defer cancel()

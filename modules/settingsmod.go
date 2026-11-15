@@ -7,7 +7,7 @@ import (
 	"time"
 
 
-	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -87,8 +87,11 @@ func groupJoinApprovalHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "Usage: .joinapproval on/off")
 	}
 
-	err := wac.SetGroupMemberAddMode(ctx, v.Info.Chat, whatsmeow.GroupMemberAddModeAdminAdd)
-	_ = enable
+	mode := types.GroupMemberAddModeAdmin
+	if !enable {
+		mode = types.GroupMemberAddModeAllMember
+	}
+	err := wac.SetGroupMemberAddMode(ctx, v.Info.Chat, mode)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed: %v", err))
 	}

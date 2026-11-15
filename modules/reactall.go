@@ -8,6 +8,7 @@ import (
 	"unicode/utf16"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -26,7 +27,7 @@ func sendReaction(wac *whatsmeow.Client, chat types.JID, msgID types.MessageID, 
 
 	// build the reaction key
 	fromMe := senderJID.String() == wac.Store.ID.String()
-	key := &waE2E.MessageKey{
+	key := &waCommon.MessageKey{
 		RemoteJID: proto.String(chat.String()),
 		FromMe:    proto.Bool(fromMe),
 		ID:        proto.String(string(msgID)),
@@ -111,35 +112,7 @@ func reactAllHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Client not available.")
 	}
 
-	// Get recent messages from store — whatsmeow stores message history
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	msgs, err := wac.Store.Messages.GetMessagesBefore(ctx, v.Info.Chat, v.Info.ID, "", 25)
-	if err != nil || len(msgs) == 0 {
-		return ReplyErr(v, "❌ No messages found in history to react to.")
-	}
-
-	sent := 0
-	failed := 0
-	for _, m := range msgs {
-		if m.IsFromMe {
-			continue // skip own messages
-		}
-		senderJID, _ := types.ParseJID(m.SenderJID)
-		err := sendReaction(wac, v.Info.Chat, types.MessageID(m.ID), senderJID, emoji)
-		if err != nil {
-			failed++
-		} else {
-			sent++
-		}
-		time.Sleep(300 * time.Millisecond) // rate-limit
-	}
-
-	return ReplyErr(v, fmt.Sprintf(
-		"✅ Reacted %s to *%d* messages (%d failed).",
-		emoji, sent, failed,
-	))
+	return ReplyErr(v, "❌ .reactall requires message history which is not available in this version. Use .react (reply to a specific message) instead.")
 }
 
 func init() {
