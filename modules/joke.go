@@ -4,10 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
-
-	"go.mau.fi/whatsmeow/types/events"
 )
 
 type jokeData struct {

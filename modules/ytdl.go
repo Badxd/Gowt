@@ -8,6 +8,7 @@ import (
 
 	"PbxGb/client"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -93,7 +94,7 @@ func ytdlHandler(v *events.Message, args []string) error {
 	}
 
 	wac := client.Get()
-	resp, err := wac.Upload(context.Background(), audioData, 4) // 4 = Audio
+	resp, err := wac.Upload(context.Background(), audioData, whatsmeow.MediaAudio)
 	if err != nil {
 		return ReplyErr(v, "❌ Upload failed: "+err.Error())
 	}

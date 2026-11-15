@@ -3,9 +3,7 @@ package modules
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
-
 
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"

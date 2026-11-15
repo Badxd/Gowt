@@ -123,7 +123,7 @@ func mp3Handler(v *events.Message, args []string) error {
 	}
 
 	_ = filename
-	size := uint32(len(data))
+
 	duration := uint32(0) // unknown without ffprobe
 
 	audioMsg := &waE2E.AudioMessage{
@@ -135,7 +135,6 @@ func mp3Handler(v *events.Message, args []string) error {
 		FileLength:    &uploaded.FileLength,
 		Mimetype:      strPtr("audio/mpeg"),
 		Seconds:       &duration,
-		FileSize:      &size,
 	}
 	_, err = wac.SendMessage(context.Background(), v.Info.Chat, &waE2E.Message{AudioMessage: audioMsg})
 	return err

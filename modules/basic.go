@@ -8,7 +8,6 @@ import (
 
 	"PbxGb/client"
 	"PbxGb/config"
-	"PbxGb/database"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"

@@ -136,7 +136,7 @@ func bioHandler(v *events.Message, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	err := wac.SetStatusMessage(ctx, newBio)
+	err := wac.SetStatusMessage(ctx, types.SetStatusInput{Text: &newBio})
 	if err != nil {
 		return ReplyErr(v, "❌ Could not set bio: "+err.Error())
 	}
@@ -165,7 +165,7 @@ func nameHandler(v *events.Message, args []string) error {
 	defer cancel()
 
 	// Send presence with new name
-	err := wac.SendPresence(types.PresenceAvailable)
+	err := wac.SendPresence(ctx, types.PresenceAvailable)
 	if err != nil {
 		return ReplyErr(v, "❌ Could not set name: "+err.Error())
 	}
