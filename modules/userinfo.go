@@ -48,17 +48,13 @@ func userInfoHandler(v *events.Message, args []string) error {
 	lines := []string{fmt.Sprintf("👤 *User Info: +%s*", phone), ""}
 
 	for _, info := range infos {
-		if info.VerifiedName != nil {
-			lines = append(lines, fmt.Sprintf("✅ Verified: *%s*", info.VerifiedName.Name))
-		}
-		if info.PushName != "" {
-			lines = append(lines, fmt.Sprintf("📛 Name: %s", info.PushName))
+		if info.VerifiedName != nil && info.VerifiedName.Details != nil {
+			if vn := info.VerifiedName.Details.GetVerifiedName(); vn != "" {
+				lines = append(lines, fmt.Sprintf("✅ Verified: *%s*", vn))
+			}
 		}
 		if info.Status != "" {
 			lines = append(lines, fmt.Sprintf("📝 About: _%s_", info.Status))
-		}
-		if !info.LastSeen.IsZero() {
-			lines = append(lines, fmt.Sprintf("🕒 Last seen: %s", info.LastSeen.Format("02 Jan 2006, 15:04")))
 		}
 		break
 	}

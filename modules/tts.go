@@ -10,6 +10,7 @@ import (
 
 	"PbxGb/client"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -65,7 +66,7 @@ func ttsHandler(v *events.Message, args []string) error {
 	chat := v.Info.Chat
 
 	// Upload as audio document
-	resp, err := wac.Upload(context.Background(), audioData, 0) // 0 = Document
+	resp, err := wac.Upload(context.Background(), audioData, whatsmeow.MediaDocument)
 	if err != nil {
 		return ReplyErr(v, "❌ Upload failed: "+err.Error())
 	}

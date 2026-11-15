@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -63,7 +64,12 @@ func shayariHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Shayari list is empty in config.")
 	}
 
-	revokeCmd(v) // Delete command message
+	// Delete command message
+	if wac := getClientSafe(); wac != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		_, _ = wac.RevokeMessage(ctx, v.Info.Chat, v.Info.ID)
+		cancel()
+	}
 
 	setShayariActive(chatID)
 	defer setShayariStopped(chatID)
@@ -99,7 +105,13 @@ func stopShayariHandler(v *events.Message, args []string) error {
 	}
 
 	setShayariStopped(chatID)
-	revokeCmd(v)
+
+	// Delete command message
+	if wac := getClientSafe(); wac != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		_, _ = wac.RevokeMessage(ctx, v.Info.Chat, v.Info.ID)
+		cancel()
+	}
 
 	return ReplyErr(v, "🛑 *Shayari Stopped!*")
 }

@@ -102,16 +102,6 @@ func reactHandler(v *events.Message, args []string) error {
 
 // reactAllHandler — react to last N messages in chat (fetched from store)
 func reactAllHandler(v *events.Message, args []string) error {
-	emoji := defaultReactEmoji
-	if len(args) > 0 {
-		emoji = encodeEmoji(strings.Join(args, ""))
-	}
-
-	wac := getClientSafe()
-	if wac == nil {
-		return ReplyErr(v, "❌ Client not available.")
-	}
-
 	return ReplyErr(v, "❌ .reactall requires message history which is not available in this version. Use .react (reply to a specific message) instead.")
 }
 

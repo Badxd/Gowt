@@ -140,8 +140,6 @@ func stickerTagHandler(v *events.Message, args []string) error {
 		FileLength:    &fl,
 		Mimetype:      &mime,
 		IsAnimated:    proto.Bool(animated),
-		StickerName:   proto.String(packName),
-		StickerPublisher: proto.String(author),
 	}
 
 	// encode exif metadata JSON into stickerMsg
