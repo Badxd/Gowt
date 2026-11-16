@@ -123,6 +123,9 @@ func unafkHandler(v *events.Message, args []string) error {
 	return ReplyErr(v, "✅ AFK status cleared.")
 }
 
+// HandleAFK is the event-handler alias called from main.go
+func HandleAFK(v *events.Message) { CheckAFK(v) }
+
 func init() {
 	Register(ModuleInfo{
 		Name:        "AFK",

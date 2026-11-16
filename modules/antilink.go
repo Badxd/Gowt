@@ -225,6 +225,9 @@ func disallowLinkHandler(v *events.Message, args []string) error {
 	return ReplyErr(v, fmt.Sprintf("✅ *+%s* removed from link allowlist.", phone))
 }
 
+// HandleAntiLink is the event-handler alias called from main.go
+func HandleAntiLink(v *events.Message) { CheckAntiLink(v) }
+
 func init() {
 	Register(ModuleInfo{
 		Name:        "Anti-Link",
