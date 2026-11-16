@@ -147,7 +147,7 @@ func vcardMentionHandler(v *events.Message, args []string) error {
 		},
 	}
 
-	_, err = wac.SendMessage(ctx, v.Info.Chat, msg)
+	_, err := wac.SendMessage(ctx, v.Info.Chat, msg)
 	return err
 }
 
