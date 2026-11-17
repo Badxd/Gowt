@@ -55,6 +55,9 @@ func main() {
 		}
 	}
 
+	// Make the mongostore container available for session-gen temp devices.
+	genContainer = container
+
 	wac := whatsmeow.NewClient(deviceStore, nil)
 	client.Set(wac)
 
@@ -104,8 +107,9 @@ func main() {
 	// Website first — Heroku needs the port bound quickly, and the pair page
 	// is how the (single) session gets added.
 	web.Start(web.Hooks{
-		Info: func() web.Info { return buildInfo(wac) },
-		Pair: func(number string) (string, error) { return startPairing(wac, number) },
+		Info:       func() web.Info { return buildInfo(wac) },
+		Pair:       func(number string) (string, error) { return startPairing(wac, number) },
+		GenSession: startGenSession,
 	})
 
 	if wac.Store.ID != nil {

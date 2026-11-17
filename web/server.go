@@ -14,12 +14,15 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 //go:embed pair.html dash.html
@@ -50,8 +53,62 @@ type Info struct {
 
 // Hooks connects the web layer to the bot (keeps this package free of imports from modules/).
 type Hooks struct {
-	Info func() Info
-	Pair func(number string) (code string, err error)
+	Info       func() Info
+	Pair       func(number string) (code string, err error)
+	GenSession func(number string) (jobID string, code string, err error)
+}
+
+// ─── session-gen job map ─────────────────────────────────────────────────────
+
+// SessionJob holds the state of an in-progress session-string generation.
+type SessionJob struct {
+	Status  string // "pending" | "code" | "done" | "error"
+	Code    string // pair code (available once status=="code")
+	Session string // base64 session string (available once status=="done")
+	ErrMsg  string // human-readable error (available once status=="error")
+	created time.Time
+}
+
+var (
+	sessionJobs   = map[string]*SessionJob{}
+	sessionJobsMu sync.Mutex
+)
+
+// SetJobStatus is called by the goroutine in pairing.go to update a session-gen job.
+func SetJobStatus(id string, j SessionJob) {
+	sessionJobsMu.Lock()
+	defer sessionJobsMu.Unlock()
+	if existing, ok := sessionJobs[id]; ok {
+		existing.Status = j.Status
+		existing.Code = j.Code
+		existing.Session = j.Session
+		existing.ErrMsg = j.ErrMsg
+	}
+}
+
+func newJobID() string {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return id.String()
+}
+
+// NewSessionJob registers a new session-gen job and returns its ID.
+// Called by pairing.go before starting the background goroutine.
+func NewSessionJob() string {
+	id := newJobID()
+	sessionJobsMu.Lock()
+	sessionJobs[id] = &SessionJob{Status: "pending", created: time.Now()}
+	sessionJobsMu.Unlock()
+	// Auto-expire after 10 minutes in a background goroutine.
+	go func() {
+		time.Sleep(10 * time.Minute)
+		sessionJobsMu.Lock()
+		delete(sessionJobs, id)
+		sessionJobsMu.Unlock()
+	}()
+	return id
 }
 
 // ErrAlreadyLinked is returned by Hooks.Pair when a session already exists.
@@ -141,6 +198,68 @@ func Start(h Hooks) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "code": code})
+	})
+
+	// ── /api/gensession/start  POST {number, key} → {ok, id, code} ──────────
+	mux.HandleFunc("/api/gensession/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "POST only"})
+			return
+		}
+		if h.GenSession == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"ok": false, "error": "session gen not available"})
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		var body struct {
+			Number string `json:"number"`
+			Key    string `json:"key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "Invalid request"})
+			return
+		}
+		if k := os.Getenv("PAIR_KEY"); k != "" && strings.TrimSpace(body.Key) != k {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"ok": false, "error": "Wrong access key"})
+			return
+		}
+
+		jobID, code, err := h.GenSession(body.Number)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "id": jobID, "code": code})
+	})
+
+	// ── /api/gensession/poll  GET ?id=  → {ok, status, code, session, error} ─
+	mux.HandleFunc("/api/gensession/poll", func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "missing id"})
+			return
+		}
+		sessionJobsMu.Lock()
+		job, found := sessionJobs[id]
+		if found && job.Status == "done" {
+			// one-time reveal: remove job after session is retrieved
+			delete(sessionJobs, id)
+		}
+		sessionJobsMu.Unlock()
+
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]interface{}{"ok": false, "error": "job not found or already retrieved"})
+			return
+		}
+		resp := map[string]interface{}{
+			"ok":      true,
+			"status":  job.Status,
+			"code":    job.Code,
+			"session": job.Session,
+			"error":   job.ErrMsg,
+		}
+		writeJSON(w, http.StatusOK, resp)
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

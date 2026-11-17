@@ -13,6 +13,8 @@ import (
 
 	"PbxGb/config"
 	"PbxGb/modules"
+	"PbxGb/mongostore"
+	"PbxGb/session"
 	"PbxGb/web"
 
 	"go.mau.fi/whatsmeow"
@@ -118,6 +120,91 @@ func onLoggedOut(wac *whatsmeow.Client) {
 	_ = wac.Store.Delete(context.Background())
 	time.Sleep(time.Second)
 	os.Exit(0)
+}
+
+// ─── Session-string generation ───────────────────────────────────────────────
+// genContainer is set by main.go so pairing.go can create temp devices
+// without importing the database package directly.
+var genContainer *mongostore.Container
+
+// startGenSession starts a background job that:
+//  1. Creates a fresh unpaired device (temp, not persisted),
+//  2. Connects to WhatsApp and requests a pair code,
+//  3. Waits for the Connected event,
+//  4. Encodes the session string and stores it on the job.
+//
+// It returns (jobID, pairCode, error). The browser polls /api/gensession/poll?id=.
+func startGenSession(number string) (string, string, error) {
+	if genContainer == nil {
+		return "", "", fmt.Errorf("session gen not ready")
+	}
+
+	digits := onlyDigits(number)
+	if len(digits) < 8 || len(digits) > 15 {
+		return "", "", errors.New("enter a valid number with country code")
+	}
+
+	// Fresh unpaired device — keys generated in-memory, NOT saved to Mongo yet.
+	tmpDevice := genContainer.NewDevice()
+	tmpClient := whatsmeow.NewClient(tmpDevice, nil)
+
+	// Connect to WhatsApp.
+	if err := tmpClient.Connect(); err != nil {
+		return "", "", fmt.Errorf("could not reach WhatsApp: %v", err)
+	}
+
+	// Wait up to 8 s for the connection to be fully ready (old session-web pattern).
+	time.Sleep(8 * time.Second)
+	if !tmpClient.IsConnected() {
+		tmpClient.Disconnect()
+		return "", "", fmt.Errorf("WhatsApp WebSocket did not become ready in time")
+	}
+
+	// Request pair code.
+	code, err := tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+	if err != nil {
+		tmpClient.Disconnect()
+		return "", "", fmt.Errorf("could not create pair code: %v", err)
+	}
+
+	// Register job — status "code" means code is ready, waiting for phone scan.
+	jobID := web.NewSessionJob()
+	web.SetJobStatus(jobID, web.SessionJob{Status: "code", Code: code})
+
+	// Background goroutine waits for Connected, then encodes the session string.
+	go func() {
+		done := make(chan struct{})
+		var once sync.Once
+		finish := func() { once.Do(func() { close(done) }) }
+
+		tmpClient.AddEventHandler(func(evt interface{}) {
+			switch evt.(type) {
+			case *events.Connected:
+				// Small delay — ensure whatsmeow has written Account back to the device.
+				time.Sleep(2 * time.Second)
+				sess, encErr := session.Encode(tmpDevice)
+				if encErr != nil {
+					log.Printf("⚠️ gensession encode error: %v", encErr)
+					web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: encErr.Error()})
+				} else {
+					web.SetJobStatus(jobID, web.SessionJob{Status: "done", Code: code, Session: sess})
+					log.Printf("✅ gensession done — session string ready (job %s)", jobID)
+				}
+				finish()
+			case *events.LoggedOut:
+				web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "logged out before session was ready"})
+				finish()
+			}
+		})
+		select {
+		case <-done:
+		case <-time.After(5 * time.Minute):
+			web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "timed out waiting for WhatsApp connection"})
+		}
+		tmpClient.Disconnect()
+	}()
+
+	return jobID, code, nil
 }
 
 func buildInfo(wac *whatsmeow.Client) web.Info {
