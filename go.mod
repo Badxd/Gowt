@@ -8,12 +8,9 @@ toolchain go1.27.2
 
 require (
 	github.com/joho/godotenv v1.5.1
-	go.mau.fi/whatsmeow v0.0.0
+	go.mau.fi/whatsmeow v0.0.0-20260516102357-8d3700152a69
 	go.mongodb.org/mongo-driver v1.15.0
 )
-
-// whatsmeow (latest upstream main, shipped inside this zip)
-replace go.mau.fi/whatsmeow => ./whatsmeow
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
