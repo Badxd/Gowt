@@ -32,7 +32,7 @@ func setStatusHandler(v *events.Message, args []string) error {
 	ctx, cancel := newContext(15)
 	defer cancel()
 
-	err := wac.SetStatusMessage(ctx, types.SetStatusInput{Text: &text})
+	err := wac.SetStatusMessage(ctx, text)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to set status: %v", err))
 	}
@@ -80,7 +80,7 @@ func clearBotStatusHandler(v *events.Message, args []string) error {
 	defer cancel()
 
 	empty := ""
-	err := wac.SetStatusMessage(ctx, types.SetStatusInput{Text: &empty})
+	err := wac.SetStatusMessage(ctx, empty)
 	if err != nil {
 		return ReplyErr(v, fmt.Sprintf("❌ Failed to clear status: %v", err))
 	}

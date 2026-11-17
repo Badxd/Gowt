@@ -33,7 +33,7 @@ func setBioHandler(v *events.Message, args []string) error {
 	}
 	bio := strings.Join(args, " ")
 	wac := client.Get()
-	err := wac.SetStatusMessage(context.Background(), types.SetStatusInput{Text: &bio})
+	err := wac.SetStatusMessage(context.Background(), bio)
 	if err != nil {
 		return ReplyErr(v, "❌ Failed to set bio: "+err.Error())
 	}

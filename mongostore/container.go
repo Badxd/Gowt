@@ -124,7 +124,6 @@ func (c *Container) toDevice(d deviceDoc) (*store.Device, error) {
 		}
 	}
 	dev.LIDMigrationTimestamp = d.LIDMigTS
-	dev.CompanionMetaNonce = d.Nonce
 	c.initializeDevice(dev)
 	return dev, nil
 }
@@ -223,7 +222,7 @@ func (c *Container) PutDevice(ctx context.Context, dev *store.Device) error {
 		"advkey": dev.AdvSecretKey, "advdet": acc.Details, "advacc": acc.AccountSignature,
 		"advacckey": acc.AccountSignatureKey, "advdev": acc.DeviceSignature,
 		"platform": dev.Platform, "biz": dev.BusinessName, "push": dev.PushName,
-		"fb": fb, "lidts": dev.LIDMigrationTimestamp, "nonce": dev.CompanionMetaNonce,
+		"fb": fb, "lidts": dev.LIDMigrationTimestamp,
 	}
 	_, err := c.db.Collection("wm_device").UpdateOne(ctx,
 		bson.M{"_id": dev.ID.String()}, bson.M{"$set": set}, options.Update().SetUpsert(true))
