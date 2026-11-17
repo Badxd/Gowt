@@ -61,24 +61,12 @@ func startPairing(wac *whatsmeow.Client, number string) (string, error) {
 		return "", fmt.Errorf("could not reach WhatsApp: %v", err)
 	}
 
-	// Wait for the WebSocket to be fully ready before requesting a pair code.
-	// Connect() returns as soon as the dial succeeds; the actual WA handshake
-	// completes asynchronously and can take a few seconds on Heroku.
-	for wait := 0; wait < 30 && !wac.IsConnected(); wait++ {
-		time.Sleep(500 * time.Millisecond)
-	}
-	if !wac.IsConnected() {
-		return "", fmt.Errorf("WhatsApp WebSocket did not become ready in time")
-	}
-
 	var (
 		code string
 		err  error
 	)
 	for i := 0; i < 5; i++ {
-		if i > 0 {
-			time.Sleep(3 * time.Second)
-		}
+		time.Sleep(2 * time.Second)
 		code, err = wac.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err == nil {
 			return code, nil
