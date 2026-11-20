@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net" // <-- Eh naya add kitta
 	"os"
 	"strings"
 	"sync"
@@ -17,16 +18,30 @@ import (
 	"PbxGb/session"
 	"PbxGb/web"
 
+	"github.com/gorilla/websocket" // <-- Eh naya add kitta
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
 var (
-	pairMu       sync.Mutex
-	justPaired   atomic.Bool
-	welcomeSent  atomic.Bool
+	pairMu      sync.Mutex
+	justPaired  atomic.Bool
+	welcomeSent atomic.Bool
 )
+
+// ── Force IPv4 to fix Termux VPN IPv6 hangs ───────────────────────────
+// EH FUNCTION SAB TON ZAROORI HAI
+func init() {
+	websocket.DefaultDialer.NetDial = func(network, addr string) (net.Conn, error) {
+		return net.DialTimeout("tcp4", addr, 10*time.Second)
+	}
+	net.DefaultResolver.PreferGo = true
+	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		d := net.Dialer{Timeout: 10 * time.Second}
+		return d.DialContext(ctx, "udp4", address)
+	}
+}
 
 func onlyDigits(s string) string {
 	var b strings.Builder
@@ -161,9 +176,6 @@ func startGenSession(number string) (string, string, error) {
 	tmpDevice := genContainer.NewDevice()
 	tmpClient := whatsmeow.NewClient(tmpDevice, nil)
 
-	// Pre-register the QR-ready listener so we never miss the event.
-	// Also register the Connected/LoggedOut handlers here so they're in place
-	// before PairPhone is called — avoids a race where the phone scans fast.
 	qrReady := make(chan struct{}, 1)
 	done := make(chan struct{})
 	var once sync.Once
