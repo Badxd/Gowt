@@ -108,7 +108,7 @@ func main() {
 	web.Start(web.Hooks{
 		Info:       func() web.Info { return buildInfo(wac) },
 		Pair:       func(number string) (string, error) { return startPairing(wac, number) },
-		GenSession: startGenSession,
+		GenSession: nil,
 		Logout: func() error {
 			return doLogout(wac)
 		},

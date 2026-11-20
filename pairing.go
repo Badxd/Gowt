@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -17,7 +18,11 @@ import (
 	"PbxGb/session"
 	"PbxGb/web"
 
+	"github.com/gorilla/websocket"
 	"go.mau.fi/whatsmeow"
+ "go.mau.fi/whatsmeow/store/sqlstore"
+ waLog "go.mau.fi/whatsmeow/util/log"
+ _ "github.com/mattn/go-sqlite3"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -28,39 +33,16 @@ var (
 	welcomeSent atomic.Bool
 )
 
-// Keep the system DNS and dialers unchanged. WhatsMeow uses its own
-// WebSocket transport; overriding gorilla/websocket.DefaultDialer does not
-// configure that transport and forcing udp4 DNS can break some networks.
-
-// pairCodeWithReconnect performs a fresh connection on a dropped socket.
-// A connected TCP/WebSocket is not proof that the WhatsApp info query will
-// succeed, so every attempt has its own timeout and error reporting.
-func pairCodeWithReconnect(c *whatsmeow.Client, digits string) (string, error) {
-	var last error
-	for attempt := 1; attempt <= 3; attempt++ {
-		if !c.IsConnected() {
-			c.Disconnect()
-			if err := c.Connect(); err != nil {
-				last = fmt.Errorf("connect: %w", err)
-				log.Printf("[pair] attempt %d: %v", attempt, last)
-				time.Sleep(2 * time.Second)
-				continue
-			}
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-		code, err := c.PairPhone(ctx, digits, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
-		cancel()
-		if err == nil {
-			return code, nil
-		}
-		last = err
-		log.Printf("[pair] attempt %d: connected=%v error=%v", attempt, c.IsConnected(), err)
-		if attempt < 3 {
-			c.Disconnect()
-			time.Sleep(2 * time.Second)
-		}
+// ── Force IPv4 to fix Termux/Heroku IPv6 hangs (Exact logic from working code) ──
+func init() {
+	websocket.DefaultDialer.NetDial = func(network, addr string) (net.Conn, error) {
+		return net.DialTimeout("tcp4", addr, 10*time.Second)
 	}
-	return "", fmt.Errorf("WhatsApp pairing failed after 3 attempts: %w", last)
+	net.DefaultResolver.PreferGo = true
+	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		d := net.Dialer{Timeout: 10 * time.Second}
+		return d.DialContext(ctx, "udp4", address)
+	}
 }
 
 func onlyDigits(s string) string {
@@ -73,26 +55,65 @@ func onlyDigits(s string) string {
 	return b.String()
 }
 
+// Pair using the same temporary SQLite device-store path as the working WtWeb.
+// After successful linking, copy the identity into MongoDB and restart the bot.
+// The restart loads the durable MongoDB identity as the one active bot session.
 func startPairing(wac *whatsmeow.Client, number string) (string, error) {
-	pairMu.Lock()
-	defer pairMu.Unlock()
-
-	if wac.Store.ID != nil {
-		return "", web.ErrAlreadyLinked
-	}
-
-	digits := onlyDigits(number)
-	if len(digits) < 8 || len(digits) > 15 {
-		return "", errors.New("enter a valid number with country code")
-	}
-	if os.Getenv("ALLOW_ANY_NUMBER") != "true" && digits != onlyDigits(config.C.OwnerJID) {
-		return "", fmt.Errorf("this number does not match OWNER_JID (+%s)", onlyDigits(config.C.OwnerJID))
-	}
-
-	wac.Disconnect()
-	log.Println("🔗 Pairing: connecting to WhatsApp")
-	return pairCodeWithReconnect(wac, digits)
+ pairMu.Lock()
+ defer pairMu.Unlock()
+ if wac.Store.ID != nil { return "", web.ErrAlreadyLinked }
+ digits := onlyDigits(number)
+ if len(digits) < 8 || len(digits) > 15 { return "", errors.New("enter a valid number with country code") }
+ if os.Getenv("ALLOW_ANY_NUMBER") != "true" && digits != onlyDigits(config.C.OwnerJID) {
+  return "", fmt.Errorf("this number does not match OWNER_JID (+%s)", onlyDigits(config.C.OwnerJID))
+ }
+ if !pairActive.CompareAndSwap(false, true) { return "", errors.New("pairing already in progress") }
+ dbFile, err := os.CreateTemp("", "gowt-pair-*.db")
+ if err != nil { pairActive.Store(false); return "", err }
+ dbPath := dbFile.Name()
+ _ = dbFile.Close()
+ _ = os.Remove(dbPath)
+ container, err := sqlstore.New(context.Background(), "sqlite3", "file:"+dbPath+"?_foreign_keys=on", waLog.Noop)
+ if err != nil { pairActive.Store(false); _ = os.Remove(dbPath); return "", fmt.Errorf("pairing store: %w", err) }
+ tmp := whatsmeow.NewClient(container.NewDevice(), waLog.Noop)
+ var cleanOnce sync.Once
+ cleanup := func() { cleanOnce.Do(func() {
+  tmp.Disconnect(); _ = container.Close(); _ = os.Remove(dbPath); _ = os.Remove(dbPath+"-wal"); _ = os.Remove(dbPath+"-shm"); pairActive.Store(false)
+ }) }
+ tmp.AddEventHandler(func(evt interface{}) {
+  switch evt.(type) {
+  case *events.PairSuccess:
+   go func() {
+    // Allow WhatsMeow to finish writing device credentials before exporting.
+    time.Sleep(2*time.Second)
+    encoded, encErr := session.Encode(tmp.Store)
+    if encErr != nil { log.Printf("pairing identity export failed: %v", encErr); cleanup(); return }
+    if genContainer == nil { log.Print("pairing MongoDB container missing"); cleanup(); return }
+    if _, decErr := session.Decode(context.Background(), genContainer, encoded); decErr != nil {
+     log.Printf("pairing identity MongoDB import failed: %v", decErr); cleanup(); return
+    }
+    log.Print("Pairing succeeded: credentials saved to MongoDB; restarting to activate bot")
+    cleanup()
+    // Heroku restarts the web dyno; on VPS use a process supervisor (systemd).
+    os.Exit(0)
+   }()
+  case *events.PairError:
+   log.Print("WhatsApp reported a pairing error")
+  }
+ })
+ if err := tmp.Connect(); err != nil { cleanup(); return "", fmt.Errorf("WhatsApp connect: %w", err) }
+ for i:=0; i<30 && !tmp.IsConnected(); i++ { time.Sleep(time.Second) }
+ if !tmp.IsConnected() { cleanup(); return "", errors.New("timeout waiting for WhatsApp socket") }
+ ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+ defer cancel()
+ code, err := tmp.PairPhone(ctx, digits, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+ if err != nil { cleanup(); return "", fmt.Errorf("WhatsApp pair code: %w", err) }
+ log.Print("Pair code created; waiting for linked-device confirmation")
+ go func() { time.Sleep(3*time.Minute); if pairActive.Load() { cleanup() } }()
+ return code, nil
 }
+
+var pairActive atomic.Bool
 
 func onPairSuccess(wac *whatsmeow.Client, v *events.PairSuccess) {
 	justPaired.Store(true)
@@ -137,61 +158,83 @@ var genContainer *mongostore.Container
 
 func startGenSession(number string) (string, string, error) {
 	if genContainer == nil {
-		return "", "", errors.New("session generator not ready")
+		return "", "", fmt.Errorf("session gen not ready")
 	}
+
 	digits := onlyDigits(number)
 	if len(digits) < 8 || len(digits) > 15 {
 		return "", "", errors.New("enter a valid number with country code")
 	}
-	// Do not create simultaneous ephemeral WhatsApp clients for repeated clicks.
-	if !pairMu.TryLock() {
-		return "", "", errors.New("another pairing is running; please wait")
-	}
+
 	tmpDevice := genContainer.NewDevice()
 	tmpClient := whatsmeow.NewClient(tmpDevice, nil)
+
+	done := make(chan struct{})
+	var once sync.Once
+	finish := func() { once.Do(func() { close(done) }) }
+
 	jobID := web.NewSessionJob()
 	var code string
-	var done sync.Once
-	finished := make(chan struct{})
-	finish := func() { done.Do(func() { close(finished) }) }
+
 	tmpClient.AddEventHandler(func(evt interface{}) {
 		switch evt.(type) {
 		case *events.Connected:
-			if tmpDevice.ID == nil {
-				return
-			}
-			sess, err := session.Encode(tmpDevice)
-			if err != nil {
-				web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: err.Error()})
+			time.Sleep(2 * time.Second)
+			sess, encErr := session.Encode(tmpDevice)
+			if encErr != nil {
+				log.Printf("⚠️ gensession encode error: %v", encErr)
+				web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: encErr.Error()})
 			} else {
 				web.SetJobStatus(jobID, web.SessionJob{Status: "done", Code: code, Session: sess})
-				log.Printf("✅ gensession ready (job %s)", jobID)
+				log.Printf("✅ gensession done — session string ready (job %s)", jobID)
 			}
 			finish()
 		case *events.LoggedOut:
 			web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "logged out before session was ready"})
 			finish()
-		case *events.PairError:
-			log.Printf("⚠️ gensession pair error (job %s)", jobID)
 		}
 	})
+
+	if err := tmpClient.Connect(); err != nil {
+		tmpClient.Disconnect()
+		return "", "", fmt.Errorf("could not reach WhatsApp: %v", err)
+	}
+
+	// EXACT LOGIC FROM WORKING CODE
+	connected := false
+	for i := 0; i < 30; i++ {
+		if tmpClient.IsConnected() {
+			connected = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	if !connected {
+		tmpClient.Disconnect()
+		return "", "", errors.New("timeout waiting for WhatsApp connection")
+	}
+
+	log.Println("🔗 gensession: connection ready — requesting pair code")
+
 	var err error
-	code, err = pairCodeWithReconnect(tmpClient, digits)
+	code, err = tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
 	if err != nil {
 		tmpClient.Disconnect()
-		pairMu.Unlock()
-		return "", "", err
+		return "", "", fmt.Errorf("could not create pair code: %v", err)
 	}
+
 	web.SetJobStatus(jobID, web.SessionJob{Status: "code", Code: code})
+
 	go func() {
-		defer pairMu.Unlock()
-		defer tmpClient.Disconnect()
 		select {
-		case <-finished:
+		case <-done:
 		case <-time.After(5 * time.Minute):
-			web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "timed out waiting for WhatsApp login"})
+			web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "timed out waiting for WhatsApp connection"})
 		}
+		tmpClient.Disconnect()
 	}()
+
 	return jobID, code, nil
 }
 

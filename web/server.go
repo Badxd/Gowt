@@ -193,7 +193,7 @@ func Start(h Hooks) {
 
 		code, err := h.Pair(body.Number)
 		if err != nil {
-			status := http.StatusBadRequest
+			status := http.StatusServiceUnavailable
 			if errors.Is(err, ErrAlreadyLinked) {
 				status = http.StatusConflict
 			}
