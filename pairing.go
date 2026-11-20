@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net" // <-- Eh naya add kitta
+	"net" // Zaroori hai IPv4 lyi
 	"os"
 	"strings"
 	"sync"
@@ -18,7 +18,7 @@ import (
 	"PbxGb/session"
 	"PbxGb/web"
 
-	"github.com/gorilla/websocket" // <-- Eh naya add kitta
+	"github.com/gorilla/websocket" // Zaroori hai IPv4 lyi
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
@@ -30,8 +30,7 @@ var (
 	welcomeSent atomic.Bool
 )
 
-// ── Force IPv4 to fix Termux VPN IPv6 hangs ───────────────────────────
-// EH FUNCTION SAB TON ZAROORI HAI
+// ── Force IPv4 to fix Termux/Heroku VPN IPv6 hangs ────────────────────
 func init() {
 	websocket.DefaultDialer.NetDial = func(network, addr string) (net.Conn, error) {
 		return net.DialTimeout("tcp4", addr, 10*time.Second)
@@ -176,6 +175,9 @@ func startGenSession(number string) (string, string, error) {
 	tmpDevice := genContainer.NewDevice()
 	tmpClient := whatsmeow.NewClient(tmpDevice, nil)
 
+	// Pre-register the QR-ready listener so we never miss the event.
+	// Also register the Connected/LoggedOut handlers here so they're in place
+	// before PairPhone is called — avoids a race where the phone scans fast.
 	qrReady := make(chan struct{}, 1)
 	done := make(chan struct{})
 	var once sync.Once
