@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net" // Zaroori hai IPv4 lyi
 	"os"
 	"strings"
 	"sync"
@@ -18,7 +17,6 @@ import (
 	"PbxGb/session"
 	"PbxGb/web"
 
-	"github.com/gorilla/websocket" // Zaroori hai IPv4 lyi
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
@@ -29,18 +27,6 @@ var (
 	justPaired  atomic.Bool
 	welcomeSent atomic.Bool
 )
-
-// ── Force IPv4 to fix Termux/Heroku VPN IPv6 hangs ────────────────────
-func init() {
-	websocket.DefaultDialer.NetDial = func(network, addr string) (net.Conn, error) {
-		return net.DialTimeout("tcp4", addr, 10*time.Second)
-	}
-	net.DefaultResolver.PreferGo = true
-	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
-		d := net.Dialer{Timeout: 10 * time.Second}
-		return d.DialContext(ctx, "udp4", address)
-	}
-}
 
 func onlyDigits(s string) string {
 	var b strings.Builder
@@ -70,11 +56,14 @@ func startPairing(wac *whatsmeow.Client, number string) (string, error) {
 		return "", fmt.Errorf("this number does not match OWNER_JID (+%s)", onlyDigits(config.C.OwnerJID))
 	}
 
-	// always start from a fresh, unpaired websocket
+	// Always start from a fresh, unpaired websocket.
 	wac.Disconnect()
 	time.Sleep(500 * time.Millisecond)
 
 	// Register the QR-ready listener BEFORE connecting so we never miss the event.
+	// *events.QR fires after the noise handshake — that is the correct signal that
+	// PairPhone is safe to call (whatsmeow docs: "wait for *events.QR before calling
+	// PairPhone to ensure the connection is fully established").
 	qrReady := make(chan struct{}, 1)
 	handlerID := wac.AddEventHandler(func(evt interface{}) {
 		if _, ok := evt.(*events.QR); ok {
@@ -90,14 +79,12 @@ func startPairing(wac *whatsmeow.Client, number string) (string, error) {
 		return "", fmt.Errorf("could not reach WhatsApp: %v", err)
 	}
 
-	// Wait for whatsmeow to fire *events.QR — that signals the noise handshake
-	// is done and PairPhone is safe to call. 30-second timeout; if the event
-	// doesn't arrive we proceed anyway (PairPhone will return a clear error).
+	// Wait for the noise handshake to complete.
 	select {
 	case <-qrReady:
 		log.Println("🔗 QR event received — connection ready, requesting pair code")
 	case <-time.After(30 * time.Second):
-		log.Println("⚠️ QR event timeout — attempting PairPhone anyway")
+		log.Println("⚠️  QR event timeout — attempting PairPhone anyway")
 	}
 
 	var (
@@ -112,7 +99,7 @@ func startPairing(wac *whatsmeow.Client, number string) (string, error) {
 		if err == nil {
 			return code, nil
 		}
-		log.Printf("⚠️ pair attempt %d failed: %v", i+1, err)
+		log.Printf("⚠️  pair attempt %d failed: %v", i+1, err)
 	}
 	return "", fmt.Errorf("could not create a pair code: %v", err)
 }
@@ -122,13 +109,13 @@ func onPairSuccess(wac *whatsmeow.Client, v *events.PairSuccess) {
 	log.Printf("✅ Paired as %s — userbot is activating", v.ID.String())
 }
 
-// onConnected — right after the first pairing the userbot announces itself in
-// the owner's own chat. (The session itself is already stored in MongoDB by the
-// Mongo store, nothing else to save.)
+// onConnected fires every time the WhatsApp WebSocket handshake completes
+// (both on first pair and on reconnect). The welcome message is sent only once.
 func onConnected(wac *whatsmeow.Client) {
 	if wac.Store.ID == nil {
 		return
 	}
+	log.Println("✅ WhatsApp connected")
 	if justPaired.Load() && welcomeSent.CompareAndSwap(false, true) {
 		time.Sleep(4 * time.Second)
 		text := fmt.Sprintf(
@@ -140,13 +127,39 @@ func onConnected(wac *whatsmeow.Client) {
 	}
 }
 
-// onLoggedOut — the phone removed this linked device. Wipe everything so the
-// website offers the pair page again, then exit (Heroku restarts the dyno).
+// onLoggedOut — the phone removed this linked device.
+// Wipe everything so the website reverts to the pair page, then exit.
 func onLoggedOut(wac *whatsmeow.Client) {
-	log.Println("⚠️ Logged out from phone — clearing session")
+	log.Println("⚠️  Logged out from phone — clearing session and exiting")
 	_ = wac.Store.Delete(context.Background())
 	time.Sleep(time.Second)
 	os.Exit(0)
+}
+
+// doLogout is called by the web /api/logout handler (dashboard Logout button).
+// It calls wac.Logout which tells WhatsApp the device is unlinked, then deletes
+// the local store record and exits so Heroku restarts to the pair page.
+func doLogout(wac *whatsmeow.Client) error {
+	if wac.Store.ID == nil {
+		return fmt.Errorf("not linked")
+	}
+	log.Println("🔌 Dashboard logout requested — unlinking device")
+
+	// Tell WhatsApp we're leaving.
+	if err := wac.Logout(context.Background()); err != nil {
+		log.Printf("⚠️  Logout RPC error (continuing anyway): %v", err)
+	}
+
+	// Delete the stored session so the next boot shows the pair page.
+	_ = wac.Store.Delete(context.Background())
+
+	// Brief pause so the HTTP response can be sent before we exit.
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		log.Println("🔌 Exiting after logout (Heroku will restart to pair page)")
+		os.Exit(0)
+	}()
+	return nil
 }
 
 // ─── Session-string generation ───────────────────────────────────────────────
@@ -185,7 +198,7 @@ func startGenSession(number string) (string, string, error) {
 
 	// Pre-register job ID now so the handler can write to it.
 	jobID := web.NewSessionJob()
-	var code string // declared here so the Connected handler can capture it
+	var code string // declared here so the Connected handler closure can capture it
 
 	tmpClient.AddEventHandler(func(evt interface{}) {
 		switch evt.(type) {
@@ -199,7 +212,7 @@ func startGenSession(number string) (string, string, error) {
 			time.Sleep(2 * time.Second)
 			sess, encErr := session.Encode(tmpDevice)
 			if encErr != nil {
-				log.Printf("⚠️ gensession encode error: %v", encErr)
+				log.Printf("⚠️  gensession encode error: %v", encErr)
 				web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: encErr.Error()})
 			} else {
 				// Include Code so SetJobStatus doesn't blank the previously stored code.
@@ -225,10 +238,11 @@ func startGenSession(number string) (string, string, error) {
 	case <-qrReady:
 		log.Println("🔗 gensession: QR event received — requesting pair code")
 	case <-time.After(30 * time.Second):
-		log.Println("⚠️ gensession: QR event timeout — attempting PairPhone anyway")
+		log.Println("⚠️  gensession: QR event timeout — attempting PairPhone anyway")
 	}
 
-	// Request pair code.
+	// Request pair code — assignment, not short declaration, so `code` is captured
+	// by the Connected handler registered above.
 	var err error
 	code, err = tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
 	if err != nil {
@@ -266,6 +280,9 @@ func buildInfo(wac *whatsmeow.Client) web.Info {
 		info.Paired = true
 		info.Number = wac.Store.ID.User
 		info.Name = wac.Store.PushName
+		// IsLoggedIn() = true only after the full WA session handshake (not just noise).
+		// IsConnected() = true after noise handshake. Use both: bot is usable when
+		// both are true. If only IsConnected but not IsLoggedIn we're still resuming.
 		info.Connected = wac.IsConnected() && wac.IsLoggedIn()
 		for _, g := range modules.MenuData() {
 			info.Groups = append(info.Groups, web.Group{Icon: g.Icon, Title: g.Title, Cmds: g.Cmds})

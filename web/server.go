@@ -56,6 +56,9 @@ type Hooks struct {
 	Info       func() Info
 	Pair       func(number string) (code string, err error)
 	GenSession func(number string) (jobID string, code string, err error)
+	// Logout unlinks the WhatsApp device and clears the stored session.
+	// The process exits after responding so Heroku restarts to the pair page.
+	Logout func() error
 }
 
 // ─── session-gen job map ─────────────────────────────────────────────────────
@@ -198,6 +201,29 @@ func Start(h Hooks) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "code": code})
+	})
+
+	// ── /api/logout  POST → {ok} ─────────────────────────────────────────────
+	// Called by the dashboard Logout button. Unlinks the device from WhatsApp,
+	// wipes the MongoDB session, and exits the process (Heroku restarts to pair).
+	mux.HandleFunc("/api/logout", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "POST only"})
+			return
+		}
+		if h.Logout == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"ok": false, "error": "logout not available"})
+			return
+		}
+		if !h.Info().Paired {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "not linked"})
+			return
+		}
+		if err := h.Logout(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Logged out — bot is restarting"})
 	})
 
 	// ── /api/gensession/start  POST {number, key} → {ok, id, code} ──────────

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,9 +17,22 @@ import (
 	"PbxGb/session"
 	"PbxGb/web"
 
+	"github.com/gorilla/websocket"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types/events"
 )
+
+// ── Force IPv4 to fix Termux/Heroku IPv6 hangs ───────────────────────────────
+func init() {
+	websocket.DefaultDialer.NetDial = func(network, addr string) (net.Conn, error) {
+		return net.DialTimeout("tcp4", addr, 15*time.Second)
+	}
+	net.DefaultResolver.PreferGo = true
+	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		d := net.Dialer{Timeout: 10 * time.Second}
+		return d.DialContext(ctx, "udp4", address)
+	}
+}
 
 func main() {
 	config.Load()
@@ -48,7 +62,7 @@ func main() {
 	// Optional: import an old SESSION string (only when nothing is stored yet).
 	if deviceStore.ID == nil && config.C.Session != "" {
 		if _, err := session.Decode(ctx, container, config.C.Session); err != nil {
-			log.Printf("⚠️ SESSION env could not be imported (%v) — open the website to link instead", err)
+			log.Printf("⚠️  SESSION env could not be imported (%v) — open the website to link instead", err)
 		} else if dev, err := container.GetFirstDevice(ctx); err == nil {
 			deviceStore = dev
 			log.Println("✅ Session imported from SESSION env")
@@ -65,7 +79,6 @@ func main() {
 		switch v := evt.(type) {
 
 		case *events.Message:
-			// Cache every message for anti-delete
 			modules.CacheMessage(v)
 
 			modules.HandleAntiDelete(v)
@@ -76,18 +89,11 @@ func main() {
 			modules.HandleAutoSave(v)
 			modules.HandleAutoReact(v)
 
-			// AFK auto-reply / auto-clear
 			modules.HandleAFK(v)
-
-			// Games
 			modules.HandleBombMove(v)
 			modules.HandleTTTMove(v)
-
-			// PM Permit
 			modules.HandleGbanRejoin(v)
 			modules.HandlePM(v)
-
-			// Command handler (all .commands)
 			modules.HandleMessage(v)
 
 		case *events.CallOffer:
@@ -101,6 +107,13 @@ func main() {
 
 		case *events.LoggedOut:
 			go onLoggedOut(wac)
+
+		case *events.Disconnected:
+			// Auto-reconnect unless we were deliberately unlinked.
+			// onLoggedOut calls os.Exit so we only reach here for dropped connections.
+			if wac.Store.ID != nil {
+				go reconnect(wac)
+			}
 		}
 	})
 
@@ -110,6 +123,9 @@ func main() {
 		Info:       func() web.Info { return buildInfo(wac) },
 		Pair:       func(number string) (string, error) { return startPairing(wac, number) },
 		GenSession: startGenSession,
+		Logout: func() error {
+			return doLogout(wac)
+		},
 	})
 
 	if wac.Store.ID != nil {
@@ -128,4 +144,27 @@ func main() {
 	log.Println("🔌 Disconnecting...")
 	wac.Disconnect()
 	time.Sleep(200 * time.Millisecond)
+}
+
+// reconnect is called in a goroutine when a Disconnected event fires.
+// It tries to reconnect indefinitely with exponential back-off (cap 60 s).
+func reconnect(wac *whatsmeow.Client) {
+	backoff := 3 * time.Second
+	for {
+		if wac.IsConnected() {
+			return // something else already reconnected
+		}
+		log.Printf("🔄 Reconnecting in %s…", backoff)
+		time.Sleep(backoff)
+
+		if err := wac.Connect(); err != nil {
+			log.Printf("⚠️  Reconnect failed: %v — will retry", err)
+			if backoff < 60*time.Second {
+				backoff *= 2
+			}
+			continue
+		}
+		log.Println("✅ Reconnected to WhatsApp")
+		return
+	}
 }

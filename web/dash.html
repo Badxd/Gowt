@@ -12,16 +12,18 @@ body{min-height:100vh;display:flex;justify-content:center;padding:calc(env(safe-
 main{width:100%;max-width:560px}
 .logo{font-size:15px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 h1{font-size:34px;line-height:1.1;letter-spacing:-.03em;margin:14px 0 12px;font-weight:800}
+.status-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}
 .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid #e5e5ea;border-radius:999px;font-size:14px;font-weight:600}
-.dot{width:9px;height:9px;border-radius:50%;background:#bbb}
-.dot.on{background:#000}
+.dot{width:9px;height:9px;border-radius:50%;background:#bbb;flex-shrink:0;transition:background .4s}
+.dot.on{background:#34c759}
+.dot.err{background:#ff3b30}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:24px 0}
 .stat{border:1px solid #e5e5ea;border-radius:18px;padding:16px}
 .stat small{display:block;font-size:12px;font-weight:600;color:#6c6c70;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
 .stat b{font-size:18px;word-break:break-all}
 h2{font-size:20px;margin:30px 0 12px;letter-spacing:-.02em}
-input{width:100%;font:inherit;font-size:16px;padding:13px 15px;border:1.5px solid #d1d1d6;border-radius:14px;background:#fff;color:#000;outline:none;margin-bottom:12px}
-input:focus{border-color:#000}
+input[type=search]{width:100%;font:inherit;font-size:16px;padding:13px 15px;border:1.5px solid #d1d1d6;border-radius:14px;background:#fff;color:#000;outline:none;margin-bottom:12px}
+input[type=search]:focus{border-color:#000}
 details{border:1px solid #e5e5ea;border-radius:16px;padding:0 16px;margin-bottom:10px}
 summary{cursor:pointer;list-style:none;padding:15px 0;font-weight:700;font-size:16px;display:flex;justify-content:space-between}
 summary::-webkit-details-marker{display:none}
@@ -29,14 +31,39 @@ summary span{color:#8e8e93;font-weight:600}
 .cmds{padding:0 0 14px;margin:0;list-style:none}
 .cmds li{padding:7px 0;border-top:1px solid #f2f2f7;font-size:14px;line-height:1.4;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word}
 .note{margin-top:28px;padding:16px;border-radius:16px;background:#f2f2f7;font-size:14px;line-height:1.5}
-.links{display:flex;justify-content:center;gap:10px;margin-top:26px}.links a{color:#000;text-decoration:none;font-weight:600;font-size:14px;padding:9px 16px;border:1px solid #e5e5ea;border-radius:999px}.foot{margin-top:28px;text-align:center;font-size:12px;color:#8e8e93}
+.links{display:flex;justify-content:center;gap:10px;margin-top:26px;flex-wrap:wrap}
+.links a{color:#000;text-decoration:none;font-weight:600;font-size:14px;padding:9px 16px;border:1px solid #e5e5ea;border-radius:999px}
+.foot{margin-top:28px;text-align:center;font-size:12px;color:#8e8e93}
+
+/* Logout button */
+#logoutBtn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:999px;border:1.5px solid #ff3b30;
+  background:transparent;color:#ff3b30;font-size:14px;font-weight:600;
+  cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;
+}
+#logoutBtn:hover{background:#ff3b30;color:#fff}
+#logoutBtn:disabled{opacity:.45;cursor:not-allowed}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:#1c1c1e;color:#fff;padding:12px 20px;border-radius:14px;
+  font-size:14px;font-weight:500;pointer-events:none;
+  transition:transform .3s ease,opacity .3s ease;opacity:0;white-space:nowrap;
+}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 </style>
 </head>
 <body>
 <main>
   <div class="logo">PBX Elite</div>
   <h1>Your userbot is live</h1>
-  <div class="pill"><span class="dot" id="dot"></span><span id="state">Checking…</span></div>
+
+  <div class="status-row">
+    <div class="pill"><span class="dot" id="dot"></span><span id="state">Checking…</span></div>
+    <button id="logoutBtn" title="Unlink WhatsApp and clear session">⏏ Logout</button>
+  </div>
 
   <div class="grid">
     <div class="stat"><small>Number</small><b id="number">—</b></div>
@@ -53,20 +80,37 @@ summary span{color:#8e8e93;font-weight:600}
   <input id="q" type="search" placeholder="Search commands…">
   <div id="groups"></div>
 
-  <div class="links"><a href="https://t.me/PBX_UPDATE" target="_blank" rel="noopener">Updates</a><a href="https://t.me/PBXCHATS" target="_blank" rel="noopener">Support</a><a href="https://t.me/BADMUNDAXD" target="_blank" rel="noopener">Owner</a></div>
+  <div class="links">
+    <a href="https://t.me/PBX_UPDATE" target="_blank" rel="noopener">Updates</a>
+    <a href="https://t.me/PBXCHATS" target="_blank" rel="noopener">Support</a>
+    <a href="https://t.me/BADMUNDAXD" target="_blank" rel="noopener">Owner</a>
+  </div>
   <div class="foot">Powered by PBX</div>
 </main>
+
+<div id="toast"></div>
 
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
   var groups=[];
+  var failCount=0;
+
+  function toast(msg,duration){
+    var t=$("toast");
+    t.textContent=msg;
+    t.classList.add("show");
+    clearTimeout(t._timer);
+    t._timer=setTimeout(function(){t.classList.remove("show")},duration||2800);
+  }
 
   function render(filter){
     var box=$("groups");box.textContent="";
     var f=(filter||"").toLowerCase();
     groups.forEach(function(g){
-      var list=(g.cmds||[]).filter(function(c){return !f||c.toLowerCase().indexOf(f)>-1||g.title.toLowerCase().indexOf(f)>-1});
+      var list=(g.cmds||[]).filter(function(c){
+        return !f||c.toLowerCase().indexOf(f)>-1||g.title.toLowerCase().indexOf(f)>-1
+      });
       if(!list.length)return;
       var d=document.createElement("details");if(f)d.open=true;
       var s=document.createElement("summary");
@@ -80,22 +124,71 @@ summary span{color:#8e8e93;font-weight:600}
   }
 
   function load(first){
-    fetch("/api/status",{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
-      if(!j.paired){location.reload();return}
-      $("dot").className="dot"+(j.connected?" on":"");
-      $("state").textContent=j.connected?"Online":"Connecting…";
-      $("number").textContent="+"+j.number;
-      $("name").textContent=j.name||"—";
-      $("uptime").textContent=j.uptime;
-      $("prefix").textContent=j.prefix;
-      $("cmds").textContent=j.commands;
-      $("ver").textContent="v"+j.version;
-      $("hintPrefix").textContent=j.prefix;$("hintPrefix2").textContent=j.prefix;
-      if(first&&j.groups){groups=j.groups;render("")}
-    }).catch(function(){$("state").textContent="Offline"});
+    fetch("/api/status",{cache:"no-store"})
+      .then(function(r){return r.json()})
+      .then(function(j){
+        failCount=0;
+        // If not paired any more (logout completed and dyno restarted), reload.
+        if(!j.paired){location.reload();return}
+
+        var dot=$("dot");
+        if(j.connected){
+          dot.className="dot on";
+          $("state").textContent="Online";
+        } else {
+          dot.className="dot";
+          $("state").textContent="Connecting…";
+        }
+
+        $("number").textContent="+"+j.number;
+        $("name").textContent=j.name||"—";
+        $("uptime").textContent=j.uptime;
+        $("prefix").textContent=j.prefix;
+        $("cmds").textContent=j.commands;
+        $("ver").textContent="v"+j.version;
+        $("hintPrefix").textContent=j.prefix;
+        $("hintPrefix2").textContent=j.prefix;
+        if(first&&j.groups&&j.groups.length){groups=j.groups;render("")}
+      })
+      .catch(function(){
+        failCount++;
+        if(failCount>=3){
+          $("dot").className="dot err";
+          $("state").textContent="Offline";
+        }
+      });
   }
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+  $("logoutBtn").addEventListener("click",function(){
+    if(!confirm("Unlink WhatsApp and clear session?\n\nThe bot will stop and you'll need to re-link it."))return;
+    var btn=$("logoutBtn");
+    btn.disabled=true;
+    btn.textContent="Logging out…";
+    toast("Unlinking device…",8000);
+    fetch("/api/logout",{method:"POST"})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.ok){
+          toast("Logged out! Reloading…",4000);
+          // Reload after a moment — the dyno restarts so pair page appears.
+          setTimeout(function(){location.reload()},3000);
+        } else {
+          toast("Error: "+(d.error||"unknown"),4000);
+          btn.disabled=false;
+          btn.textContent="⏏ Logout";
+        }
+      })
+      .catch(function(){
+        // Process exited before response — that means logout worked.
+        toast("Logged out! Reloading…",4000);
+        setTimeout(function(){location.reload()},3000);
+      });
+  });
+
   $("q").oninput=function(){render(this.value)};
-  load(true);setInterval(function(){load(false)},5000);
+  load(true);
+  setInterval(function(){load(false)},5000);
 })();
 </script>
 </body>
