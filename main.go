@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,22 +16,9 @@ import (
 	"PbxGb/session"
 	"PbxGb/web"
 
-	"github.com/gorilla/websocket"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types/events"
 )
-
-// ── Force IPv4 to fix Termux/Heroku IPv6 hangs ───────────────────────────────
-func init() {
-	websocket.DefaultDialer.NetDial = func(network, addr string) (net.Conn, error) {
-		return net.DialTimeout("tcp4", addr, 15*time.Second)
-	}
-	net.DefaultResolver.PreferGo = true
-	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
-		d := net.Dialer{Timeout: 10 * time.Second}
-		return d.DialContext(ctx, "udp4", address)
-	}
-}
 
 func main() {
 	config.Load()
