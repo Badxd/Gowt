@@ -59,18 +59,31 @@ func startPairing(wac *whatsmeow.Client, number string) (string, error) {
 	// always start from a fresh, unpaired websocket
 	wac.Disconnect()
 	time.Sleep(500 * time.Millisecond)
+
+	// Register the QR-ready listener BEFORE connecting so we never miss the event.
+	qrReady := make(chan struct{}, 1)
+	handlerID := wac.AddEventHandler(func(evt interface{}) {
+		if _, ok := evt.(*events.QR); ok {
+			select {
+			case qrReady <- struct{}{}:
+			default:
+			}
+		}
+	})
+	defer wac.RemoveEventHandler(handlerID)
+
 	if err := wac.Connect(); err != nil {
 		return "", fmt.Errorf("could not reach WhatsApp: %v", err)
 	}
 
-	// Wait for the WebSocket to be fully ready before requesting a pair code.
-	// Connect() returns as soon as the dial succeeds; the actual WA handshake
-	// completes asynchronously and can take a few seconds on Heroku.
-	for wait := 0; wait < 30 && !wac.IsConnected(); wait++ {
-		time.Sleep(500 * time.Millisecond)
-	}
-	if !wac.IsConnected() {
-		return "", fmt.Errorf("WhatsApp WebSocket did not become ready in time")
+	// Wait for whatsmeow to fire *events.QR — that signals the noise handshake
+	// is done and PairPhone is safe to call. 30-second timeout; if the event
+	// doesn't arrive we proceed anyway (PairPhone will return a clear error).
+	select {
+	case <-qrReady:
+		log.Println("🔗 QR event received — connection ready, requesting pair code")
+	case <-time.After(30 * time.Second):
+		log.Println("⚠️ QR event timeout — attempting PairPhone anyway")
 	}
 
 	var (
@@ -81,7 +94,7 @@ func startPairing(wac *whatsmeow.Client, number string) (string, error) {
 		if i > 0 {
 			time.Sleep(3 * time.Second)
 		}
-		code, err = wac.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		code, err = wac.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
 		if err == nil {
 			return code, nil
 		}
@@ -148,54 +161,70 @@ func startGenSession(number string) (string, string, error) {
 	tmpDevice := genContainer.NewDevice()
 	tmpClient := whatsmeow.NewClient(tmpDevice, nil)
 
+	// Pre-register the QR-ready listener so we never miss the event.
+	// Also register the Connected/LoggedOut handlers here so they're in place
+	// before PairPhone is called — avoids a race where the phone scans fast.
+	qrReady := make(chan struct{}, 1)
+	done := make(chan struct{})
+	var once sync.Once
+	finish := func() { once.Do(func() { close(done) }) }
+
+	// Pre-register job ID now so the handler can write to it.
+	jobID := web.NewSessionJob()
+
+	tmpClient.AddEventHandler(func(evt interface{}) {
+		switch evt.(type) {
+		case *events.QR:
+			select {
+			case qrReady <- struct{}{}:
+			default:
+			}
+		case *events.Connected:
+			// Small delay — ensure whatsmeow has written Account back to the device.
+			time.Sleep(2 * time.Second)
+			sess, encErr := session.Encode(tmpDevice)
+			if encErr != nil {
+				log.Printf("⚠️ gensession encode error: %v", encErr)
+				web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: encErr.Error()})
+			} else {
+				// Include Code so SetJobStatus doesn't blank the previously stored code.
+				web.SetJobStatus(jobID, web.SessionJob{Status: "done", Code: code, Session: sess})
+				log.Printf("✅ gensession done — session string ready (job %s)", jobID)
+			}
+			finish()
+		case *events.LoggedOut:
+			web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "logged out before session was ready"})
+			finish()
+		}
+	})
+
 	// Connect to WhatsApp.
 	if err := tmpClient.Connect(); err != nil {
+		tmpClient.Disconnect()
 		return "", "", fmt.Errorf("could not reach WhatsApp: %v", err)
 	}
 
-	// Wait up to 8 s for the connection to be fully ready (old session-web pattern).
-	time.Sleep(8 * time.Second)
-	if !tmpClient.IsConnected() {
-		tmpClient.Disconnect()
-		return "", "", fmt.Errorf("WhatsApp WebSocket did not become ready in time")
+	// Wait for whatsmeow to fire *events.QR — that signals the noise handshake
+	// is complete and PairPhone is safe. 30-second timeout.
+	select {
+	case <-qrReady:
+		log.Println("🔗 gensession: QR event received — requesting pair code")
+	case <-time.After(30 * time.Second):
+		log.Println("⚠️ gensession: QR event timeout — attempting PairPhone anyway")
 	}
 
 	// Request pair code.
-	code, err := tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+	code, err := tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
 	if err != nil {
 		tmpClient.Disconnect()
 		return "", "", fmt.Errorf("could not create pair code: %v", err)
 	}
 
-	// Register job — status "code" means code is ready, waiting for phone scan.
-	jobID := web.NewSessionJob()
+	// Store code on the job so the poll endpoint can serve it immediately.
 	web.SetJobStatus(jobID, web.SessionJob{Status: "code", Code: code})
 
-	// Background goroutine waits for Connected, then encodes the session string.
+	// Background goroutine holds the client alive until Connected or timeout.
 	go func() {
-		done := make(chan struct{})
-		var once sync.Once
-		finish := func() { once.Do(func() { close(done) }) }
-
-		tmpClient.AddEventHandler(func(evt interface{}) {
-			switch evt.(type) {
-			case *events.Connected:
-				// Small delay — ensure whatsmeow has written Account back to the device.
-				time.Sleep(2 * time.Second)
-				sess, encErr := session.Encode(tmpDevice)
-				if encErr != nil {
-					log.Printf("⚠️ gensession encode error: %v", encErr)
-					web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: encErr.Error()})
-				} else {
-					web.SetJobStatus(jobID, web.SessionJob{Status: "done", Code: code, Session: sess})
-					log.Printf("✅ gensession done — session string ready (job %s)", jobID)
-				}
-				finish()
-			case *events.LoggedOut:
-				web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "logged out before session was ready"})
-				finish()
-			}
-		})
 		select {
 		case <-done:
 		case <-time.After(5 * time.Minute):
