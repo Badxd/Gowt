@@ -171,6 +171,7 @@ func startGenSession(number string) (string, string, error) {
 
 	// Pre-register job ID now so the handler can write to it.
 	jobID := web.NewSessionJob()
+	var code string // declared here so the Connected handler can capture it
 
 	tmpClient.AddEventHandler(func(evt interface{}) {
 		switch evt.(type) {
@@ -214,7 +215,8 @@ func startGenSession(number string) (string, string, error) {
 	}
 
 	// Request pair code.
-	code, err := tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
+	var err error
+	code, err = tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
 	if err != nil {
 		tmpClient.Disconnect()
 		return "", "", fmt.Errorf("could not create pair code: %v", err)
