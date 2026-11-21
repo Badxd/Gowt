@@ -22,6 +22,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
+	waLog "go.mau.fi/whatsmeow/util/log" // Logger lyi import add kitta
 )
 
 var (
@@ -75,7 +76,6 @@ func startPairing(wac *whatsmeow.Client, number string) (string, error) {
 		return "", fmt.Errorf("could not reach WhatsApp: %v", err)
 	}
 
-	// EXACT LOGIC FROM WORKING CODE
 	connected := false
 	for i := 0; i < 30; i++ {
 		if wac.IsConnected() {
@@ -161,7 +161,8 @@ func startGenSession(number string) (string, string, error) {
 	}
 
 	tmpDevice := genContainer.NewDevice()
-	tmpClient := whatsmeow.NewClient(tmpDevice, nil)
+	// FIX 1: Logger ON kitta hai taaki error dikhe
+	tmpClient := whatsmeow.NewClient(tmpDevice, waLog.Stdout("WA_GEN", "DEBUG", true))
 
 	done := make(chan struct{})
 	var once sync.Once
@@ -172,17 +173,23 @@ func startGenSession(number string) (string, string, error) {
 
 	tmpClient.AddEventHandler(func(evt interface{}) {
 		switch evt.(type) {
-		case *events.Connected:
-			time.Sleep(2 * time.Second)
-			sess, encErr := session.Encode(tmpDevice)
-			if encErr != nil {
-				log.Printf("⚠️ gensession encode error: %v", encErr)
-				web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: encErr.Error()})
-			} else {
-				web.SetJobStatus(jobID, web.SessionJob{Status: "done", Code: code, Session: sess})
-				log.Printf("✅ gensession done — session string ready (job %s)", jobID)
+		// FIX 2: Connected nahi, PairSuccess da wait karo
+		case *events.PairSuccess:
+			log.Printf("[GEN] ✅ Pair Success! Extracting session...")
+			time.Sleep(2 * time.Second) // Wait for keys to sync
+			
+			if tmpClient.Store.ID != nil {
+				sess, encErr := session.Encode(tmpClient.Store)
+				if encErr != nil {
+					log.Printf("⚠️ gensession encode error: %v", encErr)
+					web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: encErr.Error()})
+				} else {
+					web.SetJobStatus(jobID, web.SessionJob{Status: "done", Code: code, Session: sess})
+					log.Printf("✅ gensession done — session string ready (job %s)", jobID)
+				}
 			}
 			finish()
+			
 		case *events.LoggedOut:
 			web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "logged out before session was ready"})
 			finish()
@@ -194,7 +201,6 @@ func startGenSession(number string) (string, string, error) {
 		return "", "", fmt.Errorf("could not reach WhatsApp: %v", err)
 	}
 
-	// EXACT LOGIC FROM WORKING CODE
 	connected := false
 	for i := 0; i < 30; i++ {
 		if tmpClient.IsConnected() {
@@ -211,8 +217,11 @@ func startGenSession(number string) (string, string, error) {
 
 	log.Println("🔗 gensession: connection ready — requesting pair code")
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	var err error
-	code, err = tmpClient.PairPhone(context.Background(), digits, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
+	code, err = tmpClient.PairPhone(ctx, digits, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 	if err != nil {
 		tmpClient.Disconnect()
 		return "", "", fmt.Errorf("could not create pair code: %v", err)
@@ -223,6 +232,7 @@ func startGenSession(number string) (string, string, error) {
 	go func() {
 		select {
 		case <-done:
+			// Successfully generated
 		case <-time.After(5 * time.Minute):
 			web.SetJobStatus(jobID, web.SessionJob{Status: "error", ErrMsg: "timed out waiting for WhatsApp connection"})
 		}
