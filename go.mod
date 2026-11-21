@@ -8,7 +8,6 @@ toolchain go1.27.2
 
 require (
 	github.com/gorilla/websocket v1.5.3
- github.com/mattn/go-sqlite3 v1.14.44
 	github.com/joho/godotenv v1.5.1
 	go.mau.fi/whatsmeow v0.0.0-20260516102357-8d3700152a69
 	go.mongodb.org/mongo-driver v1.15.0
