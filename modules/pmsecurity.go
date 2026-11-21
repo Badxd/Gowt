@@ -51,9 +51,9 @@ func blockJID(jid types.JID, block bool) {
 		action = blocklistRemove
 	}
 	ctx := context.Background()
-	if _, err := wac.UpdateBlocklist(ctx, jid, action); err != nil {
+	if _, err := wac.UpdateBlocklist(ctx, jid, action, ""); err != nil {
 		// Retry once on failure.
-		_, _ = wac.UpdateBlocklist(ctx, jid, action)
+		_, _ = wac.UpdateBlocklist(ctx, jid, action, "")
 	}
 }
 
