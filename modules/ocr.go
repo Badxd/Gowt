@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -16,10 +17,18 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 )
 
-// .ocr — extract text from an image using api.ocr.space (free tier)
+// .ocr — extract text from an image using api.ocr.space
+// Set OCR_API_KEY env var on Heroku for a real key (get free at ocr.space).
+// Falls back to the public demo key (rate-limited: ~500 req/month).
 
-const ocrEndpoint = "https://api.ocr.space/parse/image"
-const ocrAPIKey = "helloworld" // free API key for demo; replace with real key
+const ocrEndpoint = "https://api2.ocr.space/parse/image"
+
+func getOCRKey() string {
+	if k := os.Getenv("OCR_API_KEY"); k != "" {
+		return k
+	}
+	return "helloworld" // ocr.space free demo key
+}
 
 type ocrResponse struct {
 	ParsedResults []struct {
@@ -34,7 +43,7 @@ func runOCR(imgBytes []byte, mime string) (string, error) {
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
 
-	_ = w.WriteField("apikey", ocrAPIKey)
+	_ = w.WriteField("apikey", getOCRKey())
 	_ = w.WriteField("language", "eng")
 	_ = w.WriteField("isOverlayRequired", "false")
 

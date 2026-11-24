@@ -20,23 +20,20 @@ type countryData struct {
 		Common   string `json:"common"`
 		Official string `json:"official"`
 	} `json:"name"`
-	Capital    []string          `json:"capital"`
-	Region     string            `json:"region"`
-	Subregion  string            `json:"subregion"`
-	Population int64             `json:"population"`
-	Area       float64           `json:"area"`
+	Capital   []string          `json:"capital"`
+	Region    string            `json:"region"`
+	Subregion string            `json:"subregion"`
+	Population int64            `json:"population"`
+	Area      float64           `json:"area"`
 	Currencies map[string]struct {
 		Name   string `json:"name"`
 		Symbol string `json:"symbol"`
 	} `json:"currencies"`
-	Languages map[string]string `json:"languages"`
-	Timezones []string          `json:"timezones"`
-	Flags     struct {
-		PNG string `json:"png"`
-	} `json:"flags"`
-	TLD      []string `json:"tld"`
-	CCA2     string   `json:"cca2"`
-	Landlocked bool   `json:"landlocked"`
+	Languages  map[string]string `json:"languages"`
+	Timezones  []string          `json:"timezones"`
+	TLD        []string          `json:"tld"`
+	CCA2       string            `json:"cca2"`
+	Landlocked bool              `json:"landlocked"`
 }
 
 func fetchCountryInfo(name string) (*countryData, error) {
@@ -45,29 +42,38 @@ func fetchCountryInfo(name string) (*countryData, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("User-Agent", "PBX-Elite/1.0")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("network error: %s", err)
 	}
 	defer resp.Body.Close()
 
 	data, _ := io.ReadAll(resp.Body)
+
+	// API returns HTTP 404 with JSON error object for not-found countries
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("country not found: *%s*\nCheck spelling or try English name.", name)
+	}
+
 	var countries []countryData
 	if err := json.Unmarshal(data, &countries); err != nil {
-		return nil, fmt.Errorf("parse error: %s", err)
+		return nil, fmt.Errorf("parse error — please try again")
 	}
 	if len(countries) == 0 {
-		return nil, fmt.Errorf("country not found: %s", name)
+		return nil, fmt.Errorf("no results for: %s", name)
 	}
 	return &countries[0], nil
 }
 
 func countryHandler(v *events.Message, args []string) error {
 	if len(args) == 0 {
-		return ReplyErr(v, "Usage: .country <country name>\nExample: .country India")
+		return ReplyErr(v, "🌍 Usage: `.country <country name>`\nExample: `.country India`")
 	}
 
 	name := strings.Join(args, " ")
@@ -76,13 +82,11 @@ func countryHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ "+err.Error())
 	}
 
-	// Format currencies
 	var currencies []string
 	for _, c := range info.Currencies {
 		currencies = append(currencies, fmt.Sprintf("%s (%s)", c.Name, c.Symbol))
 	}
 
-	// Format languages
 	var languages []string
 	for _, l := range info.Languages {
 		languages = append(languages, l)
@@ -92,43 +96,49 @@ func countryHandler(v *events.Message, args []string) error {
 	if len(info.Capital) > 0 {
 		capital = strings.Join(info.Capital, ", ")
 	}
-
 	timezone := "N/A"
 	if len(info.Timezones) > 0 {
 		timezone = info.Timezones[0]
 	}
-
 	tld := "N/A"
 	if len(info.TLD) > 0 {
 		tld = strings.Join(info.TLD, ", ")
 	}
-
 	landlocked := "No"
 	if info.Landlocked {
 		landlocked = "Yes"
 	}
+	currStr := "N/A"
+	if len(currencies) > 0 {
+		currStr = strings.Join(currencies, ", ")
+	}
+	langStr := "N/A"
+	if len(languages) > 0 {
+		langStr = strings.Join(languages, ", ")
+	}
 
-	msg := fmt.Sprintf(`🌍 *%s*
-━━━━━━━━━━━━━━━━━━
-🏳️ Official: %s
-🗺️ Region: %s, %s
-🏙️ Capital: %s
-👥 Population: %s
-📐 Area: %.0f km²
-💱 Currency: %s
-🗣️ Languages: %s
-⏰ Timezone: %s
-🌐 TLD: %s
-🏔️ Landlocked: %s
-🆔 Code: %s`,
+	msg := fmt.Sprintf(
+		"🌍 *%s*\n"+
+			"━━━━━━━━━━━━━━━━━━\n"+
+			"🏳️ Official: %s\n"+
+			"🗺️ Region: %s, %s\n"+
+			"🏙️ Capital: %s\n"+
+			"👥 Population: %s\n"+
+			"📐 Area: %.0f km²\n"+
+			"💱 Currency: %s\n"+
+			"🗣️ Languages: %s\n"+
+			"⏰ Timezone: %s\n"+
+			"🌐 TLD: %s\n"+
+			"🏔️ Landlocked: %s\n"+
+			"🆔 Code: %s",
 		info.Name.Common,
 		info.Name.Official,
 		info.Region, info.Subregion,
 		capital,
 		formatPopulation(info.Population),
 		info.Area,
-		strings.Join(currencies, ", "),
-		strings.Join(languages, ", "),
+		currStr,
+		langStr,
 		timezone,
 		tld,
 		landlocked,

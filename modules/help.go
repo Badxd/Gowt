@@ -10,13 +10,14 @@ import (
 
 // .help          — list all modules
 // .help <module> — list commands in that module
+// .menu          — alias for .help (same full list)
 // .cmds          — flat list of all commands
 
 func helpHandler(v *events.Message, args []string) error {
 	if len(args) > 0 {
 		query := strings.ToLower(strings.Join(args, " "))
 		for _, mod := range allModules {
-			if strings.ToLower(mod.Name) == query || strings.ToLower(mod.Description) == query {
+			if strings.ToLower(mod.Name) == query {
 				return showModuleHelp(v, mod)
 			}
 		}
@@ -26,13 +27,9 @@ func helpHandler(v *events.Message, args []string) error {
 				return showModuleHelp(v, mod)
 			}
 		}
-		return ReplyErr(v, fmt.Sprintf("❌ No module found matching: *%s*\nTry `.help` for the full list.", query))
+		return ReplyErr(v, fmt.Sprintf(
+			"❌ No module found matching: *%s*\nTry `.help` or `.menu` for the full list.", query))
 	}
-
-	// list all modules
-	var lines []string
-	lines = append(lines, "📦 *PBX Elite — Module List*")
-	lines = append(lines, "")
 
 	// sort by name
 	mods := make([]ModuleInfo, len(allModules))
@@ -41,12 +38,28 @@ func helpHandler(v *events.Message, args []string) error {
 		return strings.ToLower(mods[i].Name) < strings.ToLower(mods[j].Name)
 	})
 
+	var lines []string
+	lines = append(lines, "📦 *PBX Elite — Command Menu*")
+	lines = append(lines, "")
+
 	for i, mod := range mods {
-		lines = append(lines, fmt.Sprintf("%d. *%s* — %s", i+1, mod.Name, mod.Description))
+		// build short command list inline
+		var cmds []string
+		for _, c := range mod.Commands {
+			cmds = append(cmds, "."+c.Pattern)
+		}
+		cmdStr := strings.Join(cmds, ", ")
+		if len(cmdStr) > 40 {
+			cmdStr = cmdStr[:37] + "..."
+		}
+		lines = append(lines, fmt.Sprintf(
+			"%d. *%s* — %s\n   ┗ %s",
+			i+1, mod.Name, mod.Description, cmdStr,
+		))
 	}
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("Total: *%d modules*", len(mods)))
-	lines = append(lines, "Use `.help <module name>` for commands.")
+	lines = append(lines, fmt.Sprintf("📊 Total: *%d modules*", len(mods)))
+	lines = append(lines, "📌 `.help <module>` for detailed commands")
 
 	return ReplyErr(v, strings.Join(lines, "\n"))
 }
@@ -54,13 +67,13 @@ func helpHandler(v *events.Message, args []string) error {
 func showModuleHelp(v *events.Message, mod ModuleInfo) error {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("📦 *%s*", mod.Name))
-	lines = append(lines, mod.Description)
+	lines = append(lines, "_"+mod.Description+"_")
 	lines = append(lines, "")
 	lines = append(lines, "*Commands:*")
 	for _, cmd := range mod.Commands {
 		sudo := ""
 		if cmd.Sudo {
-			sudo = " *(sudo)*"
+			sudo = " 🔒"
 		}
 		lines = append(lines, fmt.Sprintf("• `.%s`%s", cmd.Pattern, sudo))
 	}
@@ -80,7 +93,6 @@ func cmdsHandler(v *events.Message, args []string) error {
 	lines = append(lines, fmt.Sprintf("⚡ *All Commands (%d)*", len(cmds)))
 	lines = append(lines, "")
 
-	// group into columns of 3
 	for i := 0; i < len(cmds); i += 3 {
 		end := i + 3
 		if end > len(cmds) {
@@ -88,7 +100,6 @@ func cmdsHandler(v *events.Message, args []string) error {
 		}
 		lines = append(lines, strings.Join(cmds[i:end], "  |  "))
 	}
-
 	return ReplyErr(v, strings.Join(lines, "\n"))
 }
 
@@ -98,6 +109,7 @@ func init() {
 		Description: "List all modules and commands",
 		Commands: []CommandInfo{
 			{Pattern: "help", Handler: helpHandler, Sudo: true},
+			{Pattern: "menu", Handler: helpHandler, Sudo: true}, // alias
 			{Pattern: "cmds", Handler: cmdsHandler, Sudo: true},
 		},
 	})

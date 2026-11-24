@@ -367,24 +367,25 @@ func groupInfoHandler(v *events.Message, args []string) error {
 
 
 // REGISTER
+// NOTE: lockgroup/unlockgroup are in adminonly.go; pin/unpin are in pin.go
 func init() {
 	Register(ModuleInfo{
 		Name:        "GroupTools",
 		Description: "Group management — gmute, gban, tagall, kick, promote, demote",
 		Commands: []CommandInfo{
-			{Pattern: "kick",      Handler: kickHandler,      Sudo: true},
-			{Pattern: "add",       Handler: addMemberHandler, Sudo: true},
-			{Pattern: "promote",   Handler: promoteHandler,   Sudo: true},
-			{Pattern: "demote",    Handler: demoteHandler,    Sudo: true},
-			{Pattern: "groupinfo", Handler: groupInfoHandler, Sudo: true},
-			{Pattern: "gmute",     Handler: gmuteHandler,     Sudo: true},
-			{Pattern: "gunmute",   Handler: gunmuteHandler,   Sudo: true},
-			{Pattern: "gmutechat",  Handler: gmuteHandler,   Sudo: true},
-			{Pattern: "gunmutechat",Handler: gunmuteHandler, Sudo: true},
-			{Pattern: "gtag",       Handler: tagAllGroupHandler,Sudo: true},
-			{Pattern: "gban",      Handler: gbanHandler,      Sudo: true},
-			{Pattern: "ungban",    Handler: ungbanHandler,    Sudo: true},
-			{Pattern: "gbanlist",  Handler: gbanListHandler,  Sudo: true},
+			{Pattern: "kick",        Handler: kickHandler,       Sudo: true},
+			{Pattern: "add",         Handler: addMemberHandler,  Sudo: true},
+			{Pattern: "promote",     Handler: promoteHandler,    Sudo: true},
+			{Pattern: "demote",      Handler: demoteHandler,     Sudo: true},
+			{Pattern: "groupinfo",   Handler: groupInfoHandler,  Sudo: true},
+			{Pattern: "gmute",       Handler: gmuteHandler,      Sudo: true},
+			{Pattern: "gunmute",     Handler: gunmuteHandler,    Sudo: true},
+			{Pattern: "gmutechat",   Handler: gmuteHandler,      Sudo: true},
+			{Pattern: "gunmutechat", Handler: gunmuteHandler,    Sudo: true},
+			{Pattern: "gtag",        Handler: tagAllGroupHandler, Sudo: true},
+			{Pattern: "gban",        Handler: gbanHandler,       Sudo: true},
+			{Pattern: "ungban",      Handler: ungbanHandler,     Sudo: true},
+			{Pattern: "gbanlist",    Handler: gbanListHandler,   Sudo: true},
 		},
 	})
 }

@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
-	"google.golang.org/protobuf/proto"
 )
 
 // Poll: create a WhatsApp poll in a group or DM.
@@ -15,6 +13,7 @@ import (
 // .poll "What's for lunch?" | Pizza | Burger | Salad
 //
 // WhatsApp supports 2–12 options.
+// Uses wac.BuildPollCreation() which is the proper whatsmeow API.
 
 func pollHandler(v *events.Message, args []string) error {
 	wac := getClientSafe()
@@ -51,24 +50,12 @@ func pollHandler(v *events.Message, args []string) error {
 		}
 	}
 
-	// Build poll options
-	pollOptions := make([]*waProto.PollCreationMessage_Option, len(options))
-	for i, o := range options {
-		pollOptions[i] = &waProto.PollCreationMessage_Option{
-			OptionName: proto.String(o),
-		}
-	}
+	// BuildPollCreation is the official whatsmeow API for polls.
+	// selectableOptionCount=1 means single-choice.
+	pollMsg := wac.BuildPollCreation(question, options, 1)
 
 	ctx, cancel := newContext(15)
 	defer cancel()
-
-	pollMsg := &waProto.Message{
-		PollCreationMessage: &waProto.PollCreationMessage{
-			Name:                proto.String(question),
-			Options:             pollOptions,
-			SelectableOptionsCount: proto.Uint32(1), // single choice; 0 = multiple
-		},
-	}
 
 	_, err := wac.SendMessage(ctx, v.Info.Chat, pollMsg)
 	if err != nil {
@@ -103,24 +90,17 @@ func multipollHandler(v *events.Message, args []string) error {
 	question := parts[0]
 	options := parts[1:]
 
-	pollOptions := make([]*waProto.PollCreationMessage_Option, len(options))
-	for i, o := range options {
-		pollOptions[i] = &waProto.PollCreationMessage_Option{
-			OptionName: proto.String(o),
+	for _, o := range options {
+		if o == "" {
+			return ReplyErr(v, "❌ Poll options cannot be empty.")
 		}
 	}
 
+	// selectableOptionCount=0 means unlimited / multiple choice
+	pollMsg := wac.BuildPollCreation(question, options, 0)
+
 	ctx, cancel := newContext(15)
 	defer cancel()
-
-	// SelectableOptionsCount = 0 → unlimited (multiple choice)
-	pollMsg := &waProto.Message{
-		PollCreationMessage: &waProto.PollCreationMessage{
-			Name:                   proto.String(question),
-			Options:                pollOptions,
-			SelectableOptionsCount: proto.Uint32(0),
-		},
-	}
 
 	_, err := wac.SendMessage(ctx, v.Info.Chat, pollMsg)
 	if err != nil {

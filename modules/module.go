@@ -123,11 +123,17 @@ func HandleMessage(v *events.Message) {
 	ProcessAutoReply(v)  // autoreply.go — global keyword auto-reply (.ar rules)
 	CheckMute(v)         // mute.go     — drop messages from muted users
 	CheckSlowMode(v)     // slowmode.go — rate-limit messages
-	CheckMediaFilter(v)  // mediafilter.go — block disallowed media types
-	CheckFilters(v)      // filters.go  — keyword-based auto-responses
+	CheckMediaFilter(v)      // mediafilter.go — block disallowed media types
+	CheckFilters(v)          // filters.go  — word-ban auto-delete
+	CheckKeywordFilter(v)    // filters.go  — keyword→media resend
 	CheckAntibot(v)      // antibot.go  — kick bots that join
 	TrackMentions(v)     // mentioned.go — track @mentions for the bot
-	CheckReplyRaid(v)   // replyraid.go — auto-reply raid on target users
+	CheckReplyRaid(v)    // replyraid.go — auto-reply raid on target users
+	CheckBlacklist(v)    // blacklist.go — delete messages with blacklisted words
+	HandleAutoReact(v)   // autoreact.go — auto react to DMs
+	HandleAutoSave(v)    // autosave.go  — auto save view-once media
+	HandleAutoVV(v)      // viewonce.go  — auto-save view-once media (anti-viewonce)
+	HandleEchoHook(v)    // echo_module.go — echo messages from tracked users
 
 	text := extractText(v)
 	if text == "" {

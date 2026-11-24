@@ -85,17 +85,15 @@ func setGroupPicHandler(v *events.Message, args []string) error {
 		return ReplyErr(v, "❌ Groups only.")
 	}
 
-	_, _, err := downloadImageFromMsg(v)
+	// Download image ONCE — fix for double-download bug
+	imgData, _, err := downloadImageFromMsg(v)
 	if err != nil {
-		return ReplyErr(v, "❌ Reply to an image with .setpic")
+		return ReplyErr(v, "❌ Reply to an image with .setpic\n"+
+			"Make sure to reply to a valid JPEG/PNG image.")
 	}
-
-	// whatsmeow SetGroupPhoto takes the JPEG bytes
-	imgData, mime, err := downloadImageFromMsg(v)
-	if err != nil {
-		return ReplyErr(v, fmt.Sprintf("❌ Could not download image: %v", err))
+	if len(imgData) == 0 {
+		return ReplyErr(v, "❌ Downloaded image is empty.")
 	}
-	_ = mime
 
 	wac := getClientSafe()
 	if wac == nil {
@@ -106,7 +104,8 @@ func setGroupPicHandler(v *events.Message, args []string) error {
 
 	_, err = wac.SetGroupPhoto(ctx, v.Info.Chat, imgData)
 	if err != nil {
-		return ReplyErr(v, fmt.Sprintf("❌ Failed to set group photo: %v", err))
+		return ReplyErr(v, fmt.Sprintf("❌ Failed to set group photo: %v\n\n"+
+			"ℹ️ WhatsApp requires a valid JPEG image. Try sending a fresh photo (not a forwarded/sticker).", err))
 	}
 	return ReplyErr(v, "✅ Group photo updated.")
 }

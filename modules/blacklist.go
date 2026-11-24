@@ -1,14 +1,25 @@
 package modules
 
 import (
+	"context"
 	"strings"
 	"sync"
 
+	"PbxGb/client"
+
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
+// PBX Elite — Blacklist Module
+//
+// .addbl <word>   — add word(s) to blacklist in this chat
+// .rmbl <word>    — remove word(s)
+// .bllist         — show blacklisted words
+//
+// CheckBlacklist  — hook called from HandleMessage; deletes matching messages
+
 // ─── In-memory blacklist store (per chat) ─────────────────────────────────
-// key: chatJID string → set of blacklisted words
 var (
 	blacklistMu    sync.RWMutex
 	blacklistStore = make(map[string]map[string]struct{})
@@ -61,7 +72,60 @@ func blCheck(chatJID, text string) bool {
 	return false
 }
 
-// ─── Handlers ─────────────────────────────────────────────────────────────
+// getMessageText extracts text content from a message for blacklist checking
+func getMessageText(v *events.Message) string {
+	if v.Message == nil {
+		return ""
+	}
+	if t := v.Message.GetConversation(); t != "" {
+		return t
+	}
+	if ext := v.Message.GetExtendedTextMessage(); ext != nil {
+		return ext.GetText()
+	}
+	if img := v.Message.GetImageMessage(); img != nil {
+		return img.GetCaption()
+	}
+	if vid := v.Message.GetVideoMessage(); vid != nil {
+		return vid.GetCaption()
+	}
+	if doc := v.Message.GetDocumentMessage(); doc != nil {
+		return doc.GetTitle() + " " + doc.GetCaption()
+	}
+	return ""
+}
+
+// CheckBlacklist — hook: delete any message containing a blacklisted word
+func CheckBlacklist(v *events.Message) {
+	// Don't delete own messages
+	if v.Info.IsFromMe {
+		return
+	}
+
+	chatStr := v.Info.Chat.String()
+	text := getMessageText(v)
+	if text == "" {
+		return
+	}
+	if !blCheck(chatStr, text) {
+		return
+	}
+
+	wac := client.Get()
+	if wac == nil {
+		return
+	}
+
+	// Revoke the offending message
+	revokeProto := wac.BuildRevoke(
+		v.Info.Chat,
+		types.EmptyJID,
+		v.Info.ID,
+	)
+	_, _ = wac.SendMessage(context.Background(), v.Info.Chat, revokeProto)
+}
+
+// ─── Command Handlers ─────────────────────────────────────────────────────
 
 func addBlacklistHandler(v *events.Message, args []string) error {
 	if len(args) == 0 {
@@ -91,7 +155,7 @@ func listBlacklistHandler(v *events.Message, args []string) error {
 	if len(words) == 0 {
 		return ReplyErr(v, "📋 No blacklisted words in this chat.")
 	}
-	out := "🚫 *Blacklist - This Chat:*\n\n"
+	out := "🚫 *Blacklist — This Chat:*\n\n"
 	for _, w := range words {
 		out += "• `" + w + "`\n"
 	}

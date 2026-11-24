@@ -112,3 +112,29 @@ func init() {
 		},
 	})
 }
+
+// HandleEchoHook — called from HandleMessage; forwards messages from echoed users
+func HandleEchoHook(v *events.Message) {
+	if v.Info.IsFromMe {
+		return
+	}
+	senderJID := v.Info.Sender.String()
+	chatJID := v.Info.Chat.String()
+	if !echoCheck(senderJID, chatJID) {
+		return
+	}
+	// build echo text
+	text := ""
+	if v.Message != nil {
+		if t := v.Message.GetConversation(); t != "" {
+			text = t
+		} else if ext := v.Message.GetExtendedTextMessage(); ext != nil {
+			text = ext.GetText()
+		}
+	}
+	if text == "" {
+		return
+	}
+	echo := fmt.Sprintf("🔁 *Echo* from `%s`:\n%s", v.Info.PushName, text)
+	_ = ReplyErr(v, echo)
+}

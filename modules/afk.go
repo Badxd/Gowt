@@ -1,5 +1,10 @@
 package modules
 
+// PBX Elite — AFK Module
+// .afk [reason]  — set AFK
+// .back          — clear AFK
+// Auto-reply when owner gets a DM or @mention while AFK
+
 import (
 	"fmt"
 	"strings"
@@ -11,128 +16,150 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// AFK (Away From Keyboard): auto-reply when mentioned while AFK.
-//
-// .afk [reason]   — set yourself as AFK
-// .unafk          — clear AFK status (also clears on sending any message)
-
-type afkEntry struct {
-	Reason string
-	Since  time.Time
-}
-
 var (
-	afkMu  sync.RWMutex
-	afkMap = make(map[string]*afkEntry) // userJID (normalized) -> entry
+	afkMu      sync.RWMutex
+	afkEnabled = false
+	afkReason  = ""
+	afkSince   time.Time
 )
 
-// CheckAFK is the exported hook — auto-replies when an AFK user is mentioned.
+// CheckAFK fires on every incoming message.
+// Triggers when:
+//   1. Someone @mentions the owner in a group
+//   2. Someone sends the owner a direct message (DM)
 func CheckAFK(v *events.Message) {
-	wac := getClientSafe()
-	if wac == nil || wac.Store.ID == nil {
-		return
-	}
-
-	senderNorm := normalizeJIDForSudo(v.Info.Sender.String())
-
-	// If the sender is AFK and they just sent a message, clear their AFK status
-	afkMu.Lock()
-	if _, isAfk := afkMap[senderNorm]; isAfk {
-		delete(afkMap, senderNorm)
+	// Don't react to own messages
+	if v.Info.IsFromMe {
+		// If owner messages while AFK, clear AFK silently
+		afkMu.Lock()
+		afkEnabled = false
 		afkMu.Unlock()
-		ctx, cancel := newContext(8)
-		defer cancel()
-		msg := &waProto.Message{Conversation: proto.String("✅ Welcome back! Your AFK status has been cleared.")}
-		_, _ = wac.SendMessage(ctx, v.Info.Chat, msg)
-		return
-	}
-	afkMu.Unlock()
-
-	// Check if any mentioned user is AFK
-	ctxInfo := v.Message.GetExtendedTextMessage().GetContextInfo()
-	if ctxInfo == nil {
 		return
 	}
 
-	for _, mentioned := range ctxInfo.GetMentionedJID() {
-		norm := normalizeJIDForSudo(mentioned)
-		afkMu.RLock()
-		entry, isAfk := afkMap[norm]
-		afkMu.RUnlock()
+	afkMu.RLock()
+	enabled := afkEnabled
+	reason := afkReason
+	since := afkSince
+	afkMu.RUnlock()
 
-		if !isAfk {
-			continue
-		}
-
-		elapsed := time.Since(entry.Since).Round(time.Minute)
-		reason := entry.Reason
-		if reason == "" {
-			reason = "No reason given"
-		}
-
-		phone := strings.Split(norm, "@")[0]
-		text := fmt.Sprintf(
-			"😴 *+%s* is currently AFK.\n📝 Reason: %s\n⏱️ Since: %s ago",
-			phone, reason, elapsed,
-		)
-
-		ctx, cancel := newContext(8)
-		replyMsg := &waProto.Message{Conversation: proto.String(text)}
-		_, _ = wac.SendMessage(ctx, v.Info.Chat, replyMsg)
-		cancel()
+	if !enabled {
+		return
 	}
+
+	wac := getClientSafe()
+	if wac == nil {
+		return
+	}
+
+	chat := v.Info.Chat.String()
+	isGroup := strings.HasSuffix(chat, "@g.us")
+
+	shouldReply := false
+
+	if isGroup {
+		// In groups: only reply if owner is @mentioned
+		ownerUser := ""
+		if wac.Store.ID != nil {
+			ownerUser = wac.Store.ID.User
+		}
+		ctxInfo := v.Message.GetExtendedTextMessage().GetContextInfo()
+		if ctxInfo != nil {
+			for _, jid := range ctxInfo.GetMentionedJID() {
+				if strings.HasPrefix(jid, ownerUser+"@") || jid == ownerUser {
+					shouldReply = true
+					break
+				}
+			}
+		}
+	} else {
+		// DM: always reply (someone DMing the owner)
+		shouldReply = true
+	}
+
+	if !shouldReply {
+		return
+	}
+
+	elapsed := time.Since(since).Round(time.Minute)
+	minutes := int(elapsed.Minutes())
+	timeStr := fmt.Sprintf("%d minute(s)", minutes)
+	if minutes == 0 {
+		timeStr = "just now"
+	}
+
+	msg := fmt.Sprintf(
+		"🌙 *Owner is AFK* (Away From Keyboard)\n\n"+
+			"⏱ Since: *%s*\n"+
+			"📝 Reason: *%s*\n\n"+
+			"_I'll reply when I'm back!_",
+		timeStr, reason,
+	)
+
+	afkMsg := &waProto.Message{
+		ExtendedTextMessage: &waProto.ExtendedTextMessage{
+			Text: proto.String(msg),
+			ContextInfo: &waProto.ContextInfo{
+				StanzaID:    proto.String(v.Info.ID),
+				Participant: proto.String(v.Info.Sender.String()),
+				QuotedMessage: &waProto.Message{
+					Conversation: proto.String(extractBodyText(v)),
+				},
+			},
+		},
+	}
+
+	ctx, cancel := newContext(10)
+	defer cancel()
+	_, _ = wac.SendMessage(ctx, v.Info.Chat, afkMsg)
+}
+
+// HandleAFK is an alias kept for compatibility with module.go hook calls
+func HandleAFK(v *events.Message) {
+	CheckAFK(v)
 }
 
 func afkHandler(v *events.Message, args []string) error {
-	wac := getClientSafe()
-	if wac == nil || wac.Store.ID == nil {
-		return ReplyErr(v, "❌ Client not available.")
-	}
-
-	reason := ""
+	reason := "No reason given"
 	if len(args) > 0 {
 		reason = strings.Join(args, " ")
 	}
 
-	norm := normalizeJIDForSudo(v.Info.Sender.String())
-
 	afkMu.Lock()
-	afkMap[norm] = &afkEntry{
-		Reason: reason,
-		Since:  time.Now(),
-	}
+	afkEnabled = true
+	afkReason = reason
+	afkSince = time.Now()
 	afkMu.Unlock()
 
-	if reason != "" {
-		return ReplyErr(v, fmt.Sprintf("😴 You are now AFK.\n📝 Reason: %s\n\nSend any message to clear AFK status.", reason))
-	}
-	return ReplyErr(v, "😴 You are now AFK. Send any message to clear AFK status.")
+	return ReplyErr(v, fmt.Sprintf(
+		"🌙 *AFK enabled*\n📝 Reason: *%s*\n\nI'll auto-reply to anyone who messages or mentions me.",
+		reason,
+	))
 }
 
-func unafkHandler(v *events.Message, args []string) error {
-	norm := normalizeJIDForSudo(v.Info.Sender.String())
-
+func backHandler(v *events.Message, args []string) error {
 	afkMu.Lock()
-	_, was := afkMap[norm]
-	delete(afkMap, norm)
+	wasAFK := afkEnabled
+	since := afkSince
+	afkEnabled = false
+	afkReason = ""
 	afkMu.Unlock()
 
-	if !was {
+	if !wasAFK {
 		return ReplyErr(v, "ℹ️ You were not AFK.")
 	}
-	return ReplyErr(v, "✅ AFK status cleared.")
-}
 
-// HandleAFK is the event-handler alias called from main.go
-func HandleAFK(v *events.Message) { CheckAFK(v) }
+	elapsed := time.Since(since).Round(time.Minute)
+	return ReplyErr(v, fmt.Sprintf("✅ *Welcome back!*\nYou were AFK for *%s*.", elapsed))
+}
 
 func init() {
 	Register(ModuleInfo{
 		Name:        "AFK",
-		Description: "AFK status: auto-reply when mentioned while away",
+		Description: "Auto-reply when you are away from keyboard (.afk / .back)",
 		Commands: []CommandInfo{
-			{Pattern: "afk", Handler: afkHandler, Sudo: false},
-			{Pattern: "unafk", Handler: unafkHandler, Sudo: false},
+			{Pattern: "afk", Handler: afkHandler, Sudo: true},
+			{Pattern: "back", Handler: backHandler, Sudo: true},
 		},
 	})
 }

@@ -47,6 +47,9 @@ func HandleAutoReact(v *events.Message) {
 
 	// Don't react to own messages
 	wac := client.Get()
+	if wac == nil {
+		return
+	}
 	if wac.Store.ID != nil &&
 		v.Info.Sender.User == wac.Store.ID.User {
 		return

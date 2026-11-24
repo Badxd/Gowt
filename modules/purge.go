@@ -3,7 +3,6 @@ package modules
 import (
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 
 	"go.mau.fi/whatsmeow/types"
@@ -12,27 +11,11 @@ import (
 
 // Message delete / purge commands.
 //
-// .del / .delete     — delete the quoted/replied-to message
-// .purge <n>         — delete last n messages sent by the bot (tracked internally)
-
-// msgTracker tracks recent message IDs sent by the bot per chat for purge.
-var (
-	msgTrackerMu   sync.Mutex
-	msgTrackerMap  = make(map[string][]string) // chatJID -> []msgID (most recent last)
-	msgTrackerMax  = 50                        // keep last 50 per chat
-)
-
-// TrackSentMessage should be called after every SendMessage to track bot's own messages.
-func TrackSentMessage(chatJID, msgID string) {
-	msgTrackerMu.Lock()
-	defer msgTrackerMu.Unlock()
-	list := msgTrackerMap[chatJID]
-	list = append(list, msgID)
-	if len(list) > msgTrackerMax {
-		list = list[len(list)-msgTrackerMax:]
-	}
-	msgTrackerMap[chatJID] = list
-}
+// .del / .delete  — delete the quoted/replied-to message
+// .purge <n>      — delete last n messages sent by the bot
+//
+// NOTE: TrackSentMessage, TrackIncomingMessage, trackerMu, msgTracker are
+// all defined in clean.go — this file just uses them.
 
 func delHandler(v *events.Message, args []string) error {
 	wac := getClientSafe()
@@ -83,27 +66,51 @@ func purgeHandler(v *events.Message, args []string) error {
 
 	chat := v.Info.Chat.String()
 
-	msgTrackerMu.Lock()
-	list := msgTrackerMap[chat]
-	// take last n
-	if len(list) > n {
-		list = list[len(list)-n:]
+	// Use clean.go's shared tracker — read bot's own messages only
+	// TrackSentMessage stores SenderJID as "user@s.whatsapp.net"; match on User part.
+	botUser := ""
+	if wac.Store.ID != nil {
+		botUser = wac.Store.ID.User
 	}
-	// clear from tracker
-	if len(list) > 0 {
-		remaining := msgTrackerMap[chat]
-		msgTrackerMap[chat] = remaining[:len(remaining)-len(list)]
-	}
-	msgTrackerMu.Unlock()
 
-	if len(list) == 0 {
+	trackerMu.Lock()
+	allMsgs := msgTracker[chat]
+
+	// Filter to bot's own sent messages
+	var botMsgs []trackedMsg
+	var others []trackedMsg
+	for _, m := range allMsgs {
+		senderUser := m.SenderJID
+		if idx := len(senderUser) - len("@s.whatsapp.net"); idx > 0 && senderUser[idx:] == "@s.whatsapp.net" {
+			senderUser = senderUser[:idx]
+		}
+		if senderUser == botUser {
+			botMsgs = append(botMsgs, m)
+		} else {
+			others = append(others, m)
+		}
+	}
+
+	// Take last n from bot messages
+	toDelete := botMsgs
+	if len(toDelete) > n {
+		toDelete = toDelete[len(toDelete)-n:]
+		// Keep the ones not being deleted
+		others = append(others, botMsgs[:len(botMsgs)-n]...)
+	}
+	// Rebuild tracker without the purged entries
+	remaining := others
+	msgTracker[chat] = remaining
+	trackerMu.Unlock()
+
+	if len(toDelete) == 0 {
 		return ReplyErr(v, "ℹ️ No tracked bot messages to purge in this chat.")
 	}
 
 	deleted := 0
-	for _, msgID := range list {
+	for _, m := range toDelete {
 		ctx, cancel := newContext(8)
-		_, err := wac.RevokeMessage(ctx, v.Info.Chat, types.MessageID(msgID))
+		_, err := wac.RevokeMessage(ctx, v.Info.Chat, types.MessageID(m.ID))
 		cancel()
 		if err == nil {
 			deleted++

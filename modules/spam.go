@@ -181,7 +181,9 @@ func init() {
 		Name:        "Spam",
 		Description: "Spam and flood tools (bigspam, galispam, multispam)",
 		Commands: []CommandInfo{
+			{Pattern: "spam", Handler: bigSpamHandler, Sudo: true},
 			{Pattern: "bigspam", Handler: bigSpamHandler, Sudo: true},
+			{Pattern: "stopspam", Handler: stopBigSpamHandler, Sudo: true},
 			{Pattern: "stopbigspam", Handler: stopBigSpamHandler, Sudo: true},
 			{Pattern: "galispam", Handler: galiSpamHandler, Sudo: true},
 			{Pattern: "stopgalispam", Handler: stopGaliSpamHandler, Sudo: true},

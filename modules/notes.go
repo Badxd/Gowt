@@ -139,7 +139,10 @@ func init() {
 		Description: "Save and retrieve per-chat notes",
 		Commands: []CommandInfo{
 			{Pattern: "addnote", Handler: saveNoteHandler, Sudo: true},
+			// NOTE: "save" is intentionally NOT registered here — autosave.go owns ".save <media>"
+			// Use ".addnote <name> <text>" to save text notes
 			{Pattern: "note", Handler: getNoteHandler, Sudo: false},
+			{Pattern: "get", Handler: getNoteHandler, Sudo: false},   // alias: .get <name>
 			{Pattern: "notes", Handler: listNotesHandler, Sudo: false},
 			{Pattern: "delnote", Handler: delNoteHandler, Sudo: true},
 			{Pattern: "clearnotes", Handler: clearNotesHandler, Sudo: true},

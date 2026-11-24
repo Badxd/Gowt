@@ -1,22 +1,21 @@
 package modules
 
-// PBX Elite — Auto Save to Self Chat
-// ✅ .autosave on: automatically saves VIEW-ONCE media only (not every
-//    status/group photo — that was the old, too-broad behavior)
-// ✅ .save command: manually save ANY replied media (view-once or not)
+// PBX Elite — AutoSave Module
+//
+// .save         — save replied media to Saved Messages
+// .autosave on  — auto-save ALL incoming view-once to Saved Messages
+// .autosave off — disable autosave
 
 import (
 	"context"
 	"fmt"
-	"log"
+	"strings"
 	"sync"
-	"time"
 
 	"PbxGb/client"
-	"PbxGb/config"
 
-	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -26,22 +25,17 @@ var (
 	autoSaveEnabled = false
 )
 
-// getSelfJID — returns owner's self-chat JID
+// getSelfJID returns the bot's own JID for Saved Messages
 func getSelfJID() types.JID {
-	ownerJIDStr := config.C.OwnerJID
-	ownerUser := ownerJIDStr
-	for i, c := range ownerJIDStr {
-		if c == '@' {
-			ownerUser = ownerJIDStr[:i]
-			break
-		}
+	wac := client.Get()
+	if wac == nil || wac.Store.ID == nil {
+		return types.JID{}
 	}
-	return types.NewJID(ownerUser, types.DefaultUserServer)
+	return types.NewJID(wac.Store.ID.User, types.DefaultUserServer)
 }
 
-// HandleAutoSave — called from HandleMessage for every incoming message
+// HandleAutoSave — saves view-once images/videos when autosave is enabled
 func HandleAutoSave(v *events.Message) {
-
 	autoSaveMu.RLock()
 	enabled := autoSaveEnabled
 	autoSaveMu.RUnlock()
@@ -50,236 +44,269 @@ func HandleAutoSave(v *events.Message) {
 		return
 	}
 
-	if v.Message == nil {
+	wac := client.Get()
+	if wac == nil || wac.Store.ID == nil {
 		return
 	}
 
-	wac := client.Get()
-
 	// Don't save own messages
-	if wac.Store.ID != nil &&
-		v.Info.Sender.User == wac.Store.ID.User {
+	if v.Info.IsFromMe {
 		return
 	}
 
 	selfJID := getSelfJID()
 
-	saveMediaToSelf(v, wac, selfJID, false)
-}
-
-// saveMediaToSelf — core logic, reused by .save command too
-func saveMediaToSelf(
-	v *events.Message,
-	wac *whatsmeow.Client,
-	selfJID types.JID,
-	isManual bool,
-) {
-
-	msg := v.Message
-
-	label := "🤖 Auto Saved"
-	if isManual {
-		label = "💾 Manually Saved"
-	}
-
-	// IMAGE
-	if img := msg.GetImageMessage(); img != nil {
-		if !isManual && !img.GetViewOnce() {
-			return
-		}
+	// VIEW-ONCE IMAGE
+	if img := v.Message.GetImageMessage(); img != nil && img.GetViewOnce() {
 		data, err := wac.Download(context.Background(), img)
 		if err != nil {
-			log.Printf("[autosave] image download failed: %v", err)
 			return
 		}
 		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaImage)
 		if err != nil {
-			log.Printf("[autosave] image upload failed: %v", err)
 			return
 		}
-		caption := fmt.Sprintf("%s\nFrom: *%s*", label, v.Info.PushName)
-		ts := time.Now().Unix()
-		_, err = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
+		caption := fmt.Sprintf("💾 *AutoSaved View-Once Image*\n📩 From: *%s*\n💬 %s",
+			v.Info.PushName, v.Info.Chat.String())
+		_, _ = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
 			ImageMessage: &waProto.ImageMessage{
-				Caption:           &caption,
-				Mimetype:          img.Mimetype,
-				URL:               &uploaded.URL,
-				DirectPath:        &uploaded.DirectPath,
-				MediaKey:          uploaded.MediaKey,
-				FileEncSHA256:     uploaded.FileEncSHA256,
-				FileSHA256:        uploaded.FileSHA256,
-				FileLength:        &uploaded.FileLength,
-				MediaKeyTimestamp: &ts,
-				JPEGThumbnail:     img.JPEGThumbnail,
-				Height:            img.Height,
-				Width:             img.Width,
+				Caption:       &caption,
+				Mimetype:      img.Mimetype,
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
 			},
 		})
-		if err != nil {
-			log.Printf("[autosave] image send failed: %v", err)
-		}
 		return
 	}
 
-	// VIDEO
-	if vid := msg.GetVideoMessage(); vid != nil {
-		if !isManual && !vid.GetViewOnce() {
-			return
-		}
+	// VIEW-ONCE VIDEO
+	if vid := v.Message.GetVideoMessage(); vid != nil && vid.GetViewOnce() {
 		data, err := wac.Download(context.Background(), vid)
 		if err != nil {
-			log.Printf("[autosave] video download failed: %v", err)
 			return
 		}
 		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaVideo)
 		if err != nil {
-			log.Printf("[autosave] video upload failed: %v", err)
 			return
 		}
-		caption := fmt.Sprintf("%s\nFrom: *%s*", label, v.Info.PushName)
-		ts := time.Now().Unix()
-		_, err = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
+		caption := fmt.Sprintf("💾 *AutoSaved View-Once Video*\n📩 From: *%s*\n💬 %s",
+			v.Info.PushName, v.Info.Chat.String())
+		_, _ = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:           &caption,
-				Mimetype:          vid.Mimetype,
-				URL:               &uploaded.URL,
-				DirectPath:        &uploaded.DirectPath,
-				MediaKey:          uploaded.MediaKey,
-				FileEncSHA256:     uploaded.FileEncSHA256,
-				FileSHA256:        uploaded.FileSHA256,
-				FileLength:        &uploaded.FileLength,
-				Seconds:           vid.Seconds,
-				MediaKeyTimestamp: &ts,
-				JPEGThumbnail:     vid.JPEGThumbnail,
-				Height:            vid.Height,
-				Width:             vid.Width,
+				Caption:       &caption,
+				Mimetype:      vid.Mimetype,
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+				Seconds:       vid.Seconds,
 			},
 		})
-		if err != nil {
-			log.Printf("[autosave] video send failed: %v", err)
-		}
-		return
-	}
-
-	// AUDIO
-	if aud := msg.GetAudioMessage(); aud != nil {
-		if !isManual && !aud.GetViewOnce() {
-			return
-		}
-		data, err := wac.Download(context.Background(), aud)
-		if err != nil {
-			log.Printf("[autosave] audio download failed: %v", err)
-			return
-		}
-		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaAudio)
-		if err != nil {
-			log.Printf("[autosave] audio upload failed: %v", err)
-			return
-		}
-		ts := time.Now().Unix()
-		_, err = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
-			AudioMessage: &waProto.AudioMessage{
-				Mimetype:          aud.Mimetype,
-				URL:               &uploaded.URL,
-				DirectPath:        &uploaded.DirectPath,
-				MediaKey:          uploaded.MediaKey,
-				FileEncSHA256:     uploaded.FileEncSHA256,
-				FileSHA256:        uploaded.FileSHA256,
-				FileLength:        &uploaded.FileLength,
-				Seconds:           aud.Seconds,
-				MediaKeyTimestamp: &ts,
-			},
-		})
-		if err != nil {
-			log.Printf("[autosave] audio send failed: %v", err)
-		}
-		return
-	}
-
-	// DOCUMENT (no view-once concept for documents — manual .save only)
-	if doc := msg.GetDocumentMessage(); doc != nil {
-		if !isManual {
-			return
-		}
-		data, err := wac.Download(context.Background(), doc)
-		if err != nil {
-			log.Printf("[autosave] document download failed: %v", err)
-			return
-		}
-		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaDocument)
-		if err != nil {
-			log.Printf("[autosave] document upload failed: %v", err)
-			return
-		}
-		caption := fmt.Sprintf("%s\nFrom: *%s*", label, v.Info.PushName)
-		ts := time.Now().Unix()
-		_, err = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
-			DocumentMessage: &waProto.DocumentMessage{
-				Caption:           &caption,
-				Mimetype:          doc.Mimetype,
-				FileName:          doc.FileName,
-				URL:               &uploaded.URL,
-				DirectPath:        &uploaded.DirectPath,
-				MediaKey:          uploaded.MediaKey,
-				FileEncSHA256:     uploaded.FileEncSHA256,
-				FileSHA256:        uploaded.FileSHA256,
-				FileLength:        &uploaded.FileLength,
-				MediaKeyTimestamp: &ts,
-			},
-		})
-		if err != nil {
-			log.Printf("[autosave] document send failed: %v", err)
-		}
 	}
 }
 
-// .autosave on/off
-func autoSaveToggleHandler(
-	v *events.Message,
-	args []string,
-) error {
+// saveHandler — .save: save ANY replied media to Saved Messages
+func saveHandler(v *events.Message, args []string) error {
+	wac := getClientSafe()
+	if wac == nil {
+		return ReplyErr(v, "❌ Client not available.")
+	}
 
+	// Get the quoted message
+	qm := GetQuotedMessage(v)
+	if qm == nil {
+		return ReplyErr(v, "❌ Reply to an image or video to save it.")
+	}
+
+	selfJID := getSelfJID()
+	if selfJID.IsEmpty() {
+		return ReplyErr(v, "❌ Could not determine your Saved Messages JID.")
+	}
+
+	ctx := context.Background()
+
+	// IMAGE
+	if img := qm.GetImageMessage(); img != nil {
+		data, err := wac.Download(ctx, img)
+		if err != nil {
+			return ReplyErr(v, "❌ Could not download image: "+err.Error())
+		}
+		uploaded, err := wac.Upload(ctx, data, whatsmeow.MediaImage)
+		if err != nil {
+			return ReplyErr(v, "❌ Upload failed: "+err.Error())
+		}
+		caption := "💾 *Saved from chat*"
+		_, err = wac.SendMessage(ctx, selfJID, &waProto.Message{
+			ImageMessage: &waProto.ImageMessage{
+				Caption:       &caption,
+				Mimetype:      img.Mimetype,
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+			},
+		})
+		if err != nil {
+			return ReplyErr(v, "❌ Failed to save: "+err.Error())
+		}
+		return ReplyErr(v, "✅ Image saved to your Saved Messages.")
+	}
+
+	// VIDEO
+	if vid := qm.GetVideoMessage(); vid != nil {
+		data, err := wac.Download(ctx, vid)
+		if err != nil {
+			return ReplyErr(v, "❌ Could not download video: "+err.Error())
+		}
+		uploaded, err := wac.Upload(ctx, data, whatsmeow.MediaVideo)
+		if err != nil {
+			return ReplyErr(v, "❌ Upload failed: "+err.Error())
+		}
+		caption := "💾 *Saved from chat*"
+		_, err = wac.SendMessage(ctx, selfJID, &waProto.Message{
+			VideoMessage: &waProto.VideoMessage{
+				Caption:       &caption,
+				Mimetype:      vid.Mimetype,
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+				Seconds:       vid.Seconds,
+			},
+		})
+		if err != nil {
+			return ReplyErr(v, "❌ Failed to save: "+err.Error())
+		}
+		return ReplyErr(v, "✅ Video saved to your Saved Messages.")
+	}
+
+	// AUDIO
+	if aud := qm.GetAudioMessage(); aud != nil {
+		data, err := wac.Download(ctx, aud)
+		if err != nil {
+			return ReplyErr(v, "❌ Could not download audio: "+err.Error())
+		}
+		uploaded, err := wac.Upload(ctx, data, whatsmeow.MediaAudio)
+		if err != nil {
+			return ReplyErr(v, "❌ Upload failed: "+err.Error())
+		}
+		_, err = wac.SendMessage(ctx, selfJID, &waProto.Message{
+			AudioMessage: &waProto.AudioMessage{
+				Mimetype:      aud.Mimetype,
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+				Seconds:       aud.Seconds,
+			},
+		})
+		if err != nil {
+			return ReplyErr(v, "❌ Failed to save: "+err.Error())
+		}
+		return ReplyErr(v, "✅ Audio saved to your Saved Messages.")
+	}
+
+	// DOCUMENT
+	if doc := qm.GetDocumentMessage(); doc != nil {
+		data, err := wac.Download(ctx, doc)
+		if err != nil {
+			return ReplyErr(v, "❌ Could not download document: "+err.Error())
+		}
+		uploaded, err := wac.Upload(ctx, data, whatsmeow.MediaDocument)
+		if err != nil {
+			return ReplyErr(v, "❌ Upload failed: "+err.Error())
+		}
+		title := doc.GetTitle()
+		_, err = wac.SendMessage(ctx, selfJID, &waProto.Message{
+			DocumentMessage: &waProto.DocumentMessage{
+				Mimetype:      doc.Mimetype,
+				Title:         &title,
+				URL:           &uploaded.URL,
+				DirectPath:    &uploaded.DirectPath,
+				MediaKey:      uploaded.MediaKey,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    &uploaded.FileLength,
+			},
+		})
+		if err != nil {
+			return ReplyErr(v, "❌ Failed to save: "+err.Error())
+		}
+		return ReplyErr(v, "✅ Document saved to your Saved Messages.")
+	}
+
+	// TEXT
+	text := ""
+	if qm.GetConversation() != "" {
+		text = qm.GetConversation()
+	} else if qm.GetExtendedTextMessage() != nil && qm.GetExtendedTextMessage().GetText() != "" {
+		text = qm.GetExtendedTextMessage().GetText()
+	}
+	if text != "" {
+		note := "💾 *Saved Note:*\n\n" + text
+		_, err := wac.SendMessage(ctx, selfJID, &waProto.Message{
+			Conversation: &note,
+		})
+		if err != nil {
+			return ReplyErr(v, "❌ Failed to save text: "+err.Error())
+		}
+		return ReplyErr(v, "✅ Text saved to your Saved Messages.")
+	}
+
+	return ReplyErr(v, "❌ Could not find media or text in quoted message.")
+}
+
+func autoSaveToggleHandler(v *events.Message, args []string) error {
 	if len(args) == 0 {
 		autoSaveMu.RLock()
 		s := autoSaveEnabled
 		autoSaveMu.RUnlock()
-		state := "🟢 ON"
-		if !s {
-			state = "🔴 OFF"
+		state := "🔴 OFF"
+		if s {
+			state = "🟢 ON"
 		}
-		return ReplyErr(v, fmt.Sprintf("💾 Auto Save: *%s*", state))
+		return ReplyErr(v, fmt.Sprintf(
+			"💾 *AutoSave*: %s\n\n"+
+				"When ON, all view-once images/videos are automatically saved to your Saved Messages.\n"+
+				"Use `.save` to manually save any replied media.",
+			state,
+		))
 	}
 
-	switch args[0] {
+	switch strings.ToLower(args[0]) {
 	case "on":
 		autoSaveMu.Lock()
 		autoSaveEnabled = true
 		autoSaveMu.Unlock()
-		return ReplyErr(v, "✅ Auto Save *ON*\nOnly view-once media will be auto-saved to Saved Messages (use *.save* on any replied message to save it manually).")
+		return ReplyErr(v, "✅ *AutoSave ON*\nView-once media will be auto-saved to Saved Messages.")
 	case "off":
 		autoSaveMu.Lock()
 		autoSaveEnabled = false
 		autoSaveMu.Unlock()
-		return ReplyErr(v, "🔴 Auto Save *OFF*")
+		return ReplyErr(v, "🔴 *AutoSave OFF*")
 	}
-
 	return ReplyErr(v, "❌ Use: .autosave on / off")
 }
 
-// REGISTER
 func init() {
-
 	Register(ModuleInfo{
 		Name:        "AutoSave",
-		Description: "Auto save media to self chat",
-
+		Description: "Save replied media to Saved Messages (.save) or auto-save view-once (.autosave)",
 		Commands: []CommandInfo{
-
-			{
-				Pattern: "autosave",
-				Handler: autoSaveToggleHandler,
-				Sudo:    true,
-			},
+			{Pattern: "save", Handler: saveHandler, Sudo: true},
+			{Pattern: "autosave", Handler: autoSaveToggleHandler, Sudo: true},
 		},
 	})
 }
