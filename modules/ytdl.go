@@ -9,7 +9,7 @@ import (
 // This file only registers .ytdl to avoid duplicate symbol errors.
 
 func ytdlHandler(v *events.Message, args []string) error {
-	const ytdlMsg = `⚠️ *YouTube download requires yt-dlp.*
+	const ytdlHerokuMsg = `⚠️ *YouTube download requires yt-dlp.*
 
 yt-dlp is not available on Heroku by default.
 
@@ -19,7 +19,7 @@ yt-dlp is not available on Heroku by default.
 3. Install in .profile: pip3 install yt-dlp
 
 Or host on a VPS where yt-dlp can be installed directly.`
-	return ReplyErr(v, ytdlMsg)
+	return ReplyErr(v, ytdlHerokuMsg)
 }
 
 func init() {
