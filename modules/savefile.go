@@ -22,7 +22,7 @@ func ensureSaveDir() error {
 	return os.MkdirAll(saveDir, 0755)
 }
 
-func saveHandler(v *events.Message, args []string) error {
+func saveToFileHandler(v *events.Message, args []string) error {
 	wac := getClientSafe()
 	if wac == nil {
 		return ReplyErr(v, "❌ Client not available.")
@@ -197,7 +197,7 @@ func init() {
 		Name:        "Save File",
 		Description: "Save media messages to local disk",
 		Commands: []CommandInfo{
-			{Pattern: "save", Handler: saveHandler, Sudo: true},
+			{Pattern: "savefile", Handler: saveToFileHandler, Sudo: true},
 			{Pattern: "saved", Handler: savedListHandler, Sudo: true},
 			{Pattern: "delsave", Handler: delSaveHandler, Sudo: true},
 		},

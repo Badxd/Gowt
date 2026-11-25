@@ -46,9 +46,9 @@ func pinOrUnpin(v *events.Message, pin bool) error {
 		}
 	}
 
-	pinType := waProto.PinInChatMessage_PIN_PUSH
+	pinType := waProto.PinInChatMessage_PIN_FOR_ALL
 	if !pin {
-		pinType = waProto.PinInChatMessage_PIN_PULL
+		pinType = waProto.PinInChatMessage_UNPIN_FOR_ALL
 	}
 
 	pinMsg := &waProto.Message{

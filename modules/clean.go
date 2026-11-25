@@ -162,16 +162,12 @@ func ikallcleanHandler(v *events.Message, args []string) error {
 	// Get the quoted message ID via ContextInfo
 	var targetMsgID string
 	if v.Message != nil {
-		var ctxInfo interface{ GetStanzaId() string }
 		if ext := v.Message.GetExtendedTextMessage(); ext != nil {
-			ctxInfo = ext.GetContextInfo()
+			targetMsgID = ext.GetContextInfo().GetStanzaID()
 		} else if img := v.Message.GetImageMessage(); img != nil {
-			ctxInfo = img.GetContextInfo()
+			targetMsgID = img.GetContextInfo().GetStanzaID()
 		} else if vid := v.Message.GetVideoMessage(); vid != nil {
-			ctxInfo = vid.GetContextInfo()
-		}
-		if ctxInfo != nil {
-			targetMsgID = ctxInfo.GetStanzaId()
+			targetMsgID = vid.GetContextInfo().GetStanzaID()
 		}
 	}
 	if targetMsgID == "" {
