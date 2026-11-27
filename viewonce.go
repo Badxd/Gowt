@@ -38,27 +38,42 @@ func HandleAutoVV(v *events.Message) {
 		return
 	}
 
+	// Don't process own messages
 	if v.Info.IsFromMe {
 		return
 	}
 
 	selfJID := getSelfJID()
+	if selfJID.IsEmpty() {
+		return
+	}
+
+	// helper: send error notice to saved messages
+	notifyFail := func(kind, reason string) {
+		note := fmt.Sprintf("⚠️ *Anti-ViewOnce: %s capture failed*\n📩 From: *%s*\n💬 Chat: %s\n❌ %s",
+			kind, v.Info.PushName, v.Info.Chat.String(), reason)
+		_, _ = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
+			Conversation: proto.String(note),
+		})
+	}
 
 	img := v.Message.GetImageMessage()
 	if img != nil && img.GetViewOnce() {
 		data, err := wac.Download(context.Background(), img)
 		if err != nil {
+			notifyFail("Image", err.Error())
 			return
 		}
 		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaImage)
 		if err != nil {
+			notifyFail("Image", "upload failed: "+err.Error())
 			return
 		}
 		caption := fmt.Sprintf("👁️ *Anti-ViewOnce: Image*\n📩 From: *%s*\n💬 Chat: %s",
 			v.Info.PushName, v.Info.Chat.String())
 		_, _ = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
 			ImageMessage: &waProto.ImageMessage{
-				Caption:       &caption,
+				Caption:       proto.String(caption),
 				Mimetype:      img.Mimetype,
 				URL:           &uploaded.URL,
 				DirectPath:    &uploaded.DirectPath,
@@ -66,6 +81,7 @@ func HandleAutoVV(v *events.Message) {
 				FileEncSHA256: uploaded.FileEncSHA256,
 				FileSHA256:    uploaded.FileSHA256,
 				FileLength:    &uploaded.FileLength,
+				ViewOnce:      proto.Bool(false),
 			},
 		})
 		return
@@ -75,17 +91,19 @@ func HandleAutoVV(v *events.Message) {
 	if vid != nil && vid.GetViewOnce() {
 		data, err := wac.Download(context.Background(), vid)
 		if err != nil {
+			notifyFail("Video", err.Error())
 			return
 		}
 		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaVideo)
 		if err != nil {
+			notifyFail("Video", "upload failed: "+err.Error())
 			return
 		}
 		caption := fmt.Sprintf("👁️ *Anti-ViewOnce: Video*\n📩 From: *%s*\n💬 Chat: %s",
 			v.Info.PushName, v.Info.Chat.String())
 		_, _ = wac.SendMessage(context.Background(), selfJID, &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:       &caption,
+				Caption:       proto.String(caption),
 				Mimetype:      vid.Mimetype,
 				URL:           &uploaded.URL,
 				DirectPath:    &uploaded.DirectPath,
@@ -94,6 +112,7 @@ func HandleAutoVV(v *events.Message) {
 				FileSHA256:    uploaded.FileSHA256,
 				FileLength:    &uploaded.FileLength,
 				Seconds:       vid.Seconds,
+				ViewOnce:      proto.Bool(false),
 			},
 		})
 	}
@@ -130,16 +149,13 @@ func vvHandler(v *events.Message, args []string) error {
 
 	// Try image first
 	if img := qm.GetImageMessage(); img != nil {
-		// The quoted message proto may not have URL — it's stripped by WhatsApp
-		// Try to download using the available media key + enc hash from proto
+		// WhatsApp strips the media URL from quoted view-once messages.
+		// Download only works if the message is very recent and URL hasn't expired.
 		data, err := wac.Download(context.Background(), img)
 		if err != nil {
-			// Fallback: tell user to forward the original
-			return ReplyErr(v, fmt.Sprintf(
-				"❌ Cannot reveal this view-once: media URL expired or missing.\n"+
-					"_(%v)_\n\n"+
-					"💡 Tip: The sender needs to resend it, or enable `.antiviewonce on` to auto-capture future view-once media.",
-				err))
+			return ReplyErr(v, "❌ *Cannot reveal this view-once.*\n\n"+
+				"WhatsApp removes the media URL from view-once messages after they're opened.\n\n"+
+				"💡 Enable `.antiviewonce on` — the bot will silently save all future view-once media *before* you open it.")
 		}
 
 		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaImage)
@@ -168,11 +184,9 @@ func vvHandler(v *events.Message, args []string) error {
 	if vid := qm.GetVideoMessage(); vid != nil {
 		data, err := wac.Download(context.Background(), vid)
 		if err != nil {
-			return ReplyErr(v, fmt.Sprintf(
-				"❌ Cannot reveal this view-once: media URL expired or missing.\n"+
-					"_(%v)_\n\n"+
-					"💡 Enable `.antiviewonce on` to auto-capture future view-once media.",
-				err))
+			return ReplyErr(v, "❌ *Cannot reveal this view-once.*\n\n"+
+				"WhatsApp removes the media URL from view-once messages after they're opened.\n\n"+
+				"💡 Enable `.antiviewonce on` — the bot will silently save all future view-once media *before* you open it.")
 		}
 
 		uploaded, err := wac.Upload(context.Background(), data, whatsmeow.MediaVideo)

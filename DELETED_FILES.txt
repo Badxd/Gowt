@@ -1,0 +1,14 @@
+DELETE these files from your modules/ folder:
+
+rm modules/autoreact.go
+rm modules/sticker.go
+rm modules/ocr.go
+rm modules/meme.go
+rm modules/img2sticker.go
+rm modules/countryinfo.go
+
+REPLACE these files with the ones in the ZIP:
+(chatlock.go and welcome.go are now stubs — overwrite, don't delete)
+
+Then drop all other .go files from the ZIP into modules/ and run:
+go run main.go

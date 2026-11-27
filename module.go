@@ -130,7 +130,6 @@ func HandleMessage(v *events.Message) {
 	TrackMentions(v)     // mentioned.go — track @mentions for the bot
 	CheckReplyRaid(v)    // replyraid.go — auto-reply raid on target users
 	CheckBlacklist(v)    // blacklist.go — delete messages with blacklisted words
-	HandleAutoReact(v)   // autoreact.go — auto react to DMs
 	HandleAutoSave(v)    // autosave.go  — auto save view-once media
 	HandleAutoVV(v)      // viewonce.go  — auto-save view-once media (anti-viewonce)
 	HandleEchoHook(v)    // echo_module.go — echo messages from tracked users

@@ -17,11 +17,14 @@ import (
 )
 
 var (
-	afkMu      sync.RWMutex
-	afkEnabled = false
-	afkReason  = ""
-	afkSince   time.Time
+	afkMu        sync.RWMutex
+	afkEnabled   = false
+	afkReason    = ""
+	afkSince     time.Time
+	afkLastReply = make(map[string]time.Time) // chatJID → last AFK reply time
 )
+
+const afkCooldown = 60 * time.Second // don't double-reply to same chat within 60s
 
 // CheckAFK fires on every incoming message.
 // Triggers when:
@@ -80,6 +83,16 @@ func CheckAFK(v *events.Message) {
 	if !shouldReply {
 		return
 	}
+
+	// Cooldown: don't spam AFK reply to same chat repeatedly
+	chatKey := chat
+	afkMu.Lock()
+	if last, ok := afkLastReply[chatKey]; ok && time.Since(last) < afkCooldown {
+		afkMu.Unlock()
+		return
+	}
+	afkLastReply[chatKey] = time.Now()
+	afkMu.Unlock()
 
 	elapsed := time.Since(since).Round(time.Minute)
 	minutes := int(elapsed.Minutes())
@@ -143,6 +156,7 @@ func backHandler(v *events.Message, args []string) error {
 	since := afkSince
 	afkEnabled = false
 	afkReason = ""
+	afkLastReply = make(map[string]time.Time) // reset cooldown on .back
 	afkMu.Unlock()
 
 	if !wasAFK {
